@@ -1319,13 +1319,13 @@ main {
     padding: 23px;
   }
   .tabs {
-    gap: 24px;
+    gap: 20px;
   }
   .tabs button {
     font-size: 10px;
   }
   .tabs svg {
-    display: block;
+    display: none;
   }
   .empty-state {
     padding-top: 30px;

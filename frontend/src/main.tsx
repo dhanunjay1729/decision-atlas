@@ -568,6 +568,8 @@ function App() {
                               s.filter((x) => x.title !== title),
                             );
                             setRolesConfirmed(false);
+                            setNotice("");
+                            if (!sources.some((s) => s.title !== title) && !pasted.trim()) setWeb(true);
                           }}
                         >
                           <X size={14} />
@@ -636,7 +638,9 @@ function App() {
               <p className="helper">
                 {rolesConfirmed
                   ? "Suggested for your question. Edit before starting."
-                  : "Editable placeholders. Topic-specific suggestions need a model."}
+                  : analysis?.mode === "sample" && question === sample.question
+                    ? "Sample perspectives. Live suggestions need a model."
+                    : "Editable placeholders. Topic-specific suggestions need a model."}
               </p>
               <div className="role-inputs">
                 {roles.map((role, i) => (

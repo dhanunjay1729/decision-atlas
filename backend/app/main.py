@@ -25,12 +25,19 @@ run_lock = asyncio.Semaphore(1)
 def status():
     return configuration()
 
+@app.get('/api/allowance')
+def allowance(request:Request):
+    return ledger.allowance(request.client.host if request.client else 'unknown')
+
 def available(request: Request):
     if not configuration()['configured']:
         raise HTTPException(503, 'Live analysis is not connected yet. Explore the labeled sample while a model is selected.')
     try:
         # Do not trust X-Forwarded-For. Configure the ASGI proxy allowlist for hosting.
-        ledger.request(request.client.host if request.client else 'unknown')
+        ip=request.client.host if request.client else 'unknown'
+        if ledger.allowance(ip)['remaining']==0:
+            raise LimitError('This network has used its five-debate allowance. The saved sample remains available.')
+        ledger.request(ip)
     except LimitError as e:
         raise HTTPException(429, str(e)) from e
 
@@ -63,6 +70,7 @@ async def analyze(payload: AnalyzeRequest, request: Request):
         async with run_lock:
             try:
                 if await request.is_disconnected(): return
+                ledger.start_debate(request.client.host if request.client else 'unknown')
                 before=ledger.total()
                 selected=sources
                 if payload.include_web:

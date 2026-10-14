@@ -4,6 +4,9 @@ Reservations survive failures because a failed request may still be billed.
 Token prices must be configured from the selected provider before enabling live use.
 """
 import os
+import hashlib
+import ipaddress
+import secrets
 import sqlite3
 import time
 from pathlib import Path
@@ -18,11 +21,15 @@ class Ledger:
         with self.connect() as db:
             db.execute('CREATE TABLE IF NOT EXISTS costs (id INTEGER PRIMARY KEY, amount REAL NOT NULL, created REAL NOT NULL)')
             db.execute('CREATE TABLE IF NOT EXISTS requests (ip TEXT NOT NULL, created REAL NOT NULL)')
+            db.execute('CREATE TABLE IF NOT EXISTS debates (ip TEXT NOT NULL, created REAL NOT NULL)')
+            db.execute('CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)')
+            db.execute('INSERT OR IGNORE INTO settings VALUES (?,?)',('ip_salt',secrets.token_hex(32)))
 
     def connect(self):
         return sqlite3.connect(self.path, timeout=10)
 
     def request(self, ip: str):
+        ip=self.ip_key(ip)
         now = time.time()
         with self.connect() as db:
             db.execute('BEGIN IMMEDIATE')
@@ -37,7 +44,7 @@ class Ledger:
         with self.connect() as db:
             db.execute('BEGIN IMMEDIATE')
             total = db.execute('SELECT COALESCE(SUM(amount), 0) FROM costs').fetchone()[0]
-            if total + maximum_cost > float(os.getenv('TOTAL_MODEL_BUDGET_USD', '3')):
+            if total + maximum_cost > float(os.getenv('TOTAL_MODEL_BUDGET_USD', '2')):
                 raise LimitError('The demo model budget has been reached. The saved sample is still available.')
             return db.execute('INSERT INTO costs(amount, created) VALUES (?, ?)', (maximum_cost, time.time())).lastrowid
 
@@ -54,3 +61,28 @@ class Ledger:
     def total(self):
         with self.connect() as db:
             return db.execute('SELECT COALESCE(SUM(amount),0) FROM costs').fetchone()[0]
+
+    def ip_key(self, ip):
+        try:
+            address=ipaddress.ip_address(ip)
+            ip=str(getattr(address,'ipv4_mapped',None) or address)
+        except ValueError:
+            pass
+        with self.connect() as db:
+            salt=db.execute('SELECT value FROM settings WHERE key=?',('ip_salt',)).fetchone()[0]
+        return hashlib.sha256((salt+ip).encode()).hexdigest()
+
+    def allowance(self, ip):
+        key=self.ip_key(ip);limit=int(os.getenv('MAX_DEBATES_PER_IP','5'))
+        with self.connect() as db:
+            used=db.execute('SELECT COUNT(*) FROM debates WHERE ip=?',(key,)).fetchone()[0]
+        return {'limit':limit,'used':used,'remaining':max(0,limit-used)}
+
+    def start_debate(self, ip):
+        key=self.ip_key(ip);limit=int(os.getenv('MAX_DEBATES_PER_IP','5'))
+        with self.connect() as db:
+            db.execute('BEGIN IMMEDIATE')
+            used=db.execute('SELECT COUNT(*) FROM debates WHERE ip=?',(key,)).fetchone()[0]
+            if used>=limit:
+                raise LimitError('This network has used its five-debate allowance. The saved sample remains available.')
+            db.execute('INSERT INTO debates VALUES (?,?)',(key,time.time()))

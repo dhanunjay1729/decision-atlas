@@ -74,6 +74,9 @@ function App() {
   const [notice, setNotice] = useState("");
   const [cost, setCost] = useState<{estimated_usd:number;planning_upper_usd:number;note:string}|null>(null);
   const [reviewed, setReviewed] = useState(false);
+  const [allowance, setAllowance] = useState<{limit:number;used:number;remaining:number}|null>(null);
+  function refreshAllowance() {fetch("/api/allowance").then(r=>r.ok?r.json():null).then(a=>{if(a)setAllowance(a);}).catch(()=>{});}
+  useEffect(()=>{refreshAllowance();},[]);
   useEffect(() => {setCost(null);setReviewed(false);}, [question, roles, sources, pasted, web]);
   const validRoles = roles.every(r => r.trim()) && new Set(roles.map(r=>r.trim().toLowerCase())).size === roles.length;
   async function reviewCost() {
@@ -327,7 +330,7 @@ function App() {
       if (id === runId.current)
         setError(e instanceof Error ? e.message : "Analysis failed.");
     } finally {
-      if (id === runId.current) {setBusy(false);}
+      if (id === runId.current) {setBusy(false);refreshAllowance();}
     }
   }
   function exportReport() {
@@ -688,6 +691,7 @@ function App() {
                   Arguments <ArrowRight size={12} /> Revisions
                 </span>
               </div>
+              {allowance && <p className="allowance-note">{allowance.remaining} of {allowance.limit} debate starts remaining for this network. Suggestions do not use a debate. Starts are counted even if a paid run later fails.</p>}
               {cost && <div className="cost-estimate"><strong>Estimated ${cost.estimated_usd.toFixed(4)}</strong><p>Planning range: ${cost.estimated_usd.toFixed(4)}–${cost.planning_upper_usd.toFixed(4)} · {roles.length*2} arguments · {web?"1 shared search":"No web search"}</p><small>Target: $0.02 per debate on average. Estimates vary; the shared project budget is $2.</small></div>}
               {error && (
                 <div className="error" role="alert">
@@ -702,6 +706,7 @@ function App() {
                   reading ||
                   !question.trim() ||
                   !ready ||
+                  allowance?.remaining === 0 ||
                   !validRoles
                 }
                 onClick={() => void (reviewed ? runLive() : reviewCost())}
@@ -714,6 +719,7 @@ function App() {
                 {reviewed ? "Start debate" : "Review cost & start"}{" "}
                 <ArrowRight size={16} />
               </button>
+              <button className="secondary-button" disabled={busy || reading || !ready || allowance?.remaining === 0 || question.trim().length < 5} onClick={() => void prepare()}>Suggest {roles.length} perspectives</button>
               <p className="helper">{web ? "Shared web evidence will be retrieved for all debaters." : "Uses model knowledge and any documents you add. Unsourced facts remain unverified."}</p>
               {!ready && (
                 <p className="pending-note">

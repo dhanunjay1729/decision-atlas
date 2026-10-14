@@ -22,6 +22,10 @@ def free_tier_only() -> bool:
 
 def configuration() -> dict:
     provider = os.getenv('MODEL_PROVIDER', 'unconfigured')
+    if provider == 'vercel':
+        configured = bool(os.getenv('AI_GATEWAY_API_KEY'))
+        return {'configured':configured,'model':'Affordable multi-model pool' if configured else None,'prepare_model':'alibaba/qwen3.7-flash' if configured else None,'provider':'vercel','free_tier_only':False,'web_available':configured}
+
     name = os.getenv('MODEL_NAME', '')
     prepare_model = os.getenv('MODEL_PREPARE_NAME', '') or name
     prices = [os.getenv('MODEL_INPUT_USD_PER_MILLION'), os.getenv('MODEL_OUTPUT_USD_PER_MILLION')]

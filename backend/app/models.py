@@ -61,6 +61,8 @@ class Claim(BaseModel):
     status: Literal['supported', 'contradicted', 'insufficient', 'value', 'unverified', 'review'] = 'insufficient'
     source_ids: list[str]
     explanation: str = 'Verification pending.'
+    assessments: list[dict] = Field(default_factory=list)
+    kind: Literal['empirical', 'value'] = 'empirical'
 
 class Argument(BaseModel):
     agent: int
@@ -69,6 +71,7 @@ class Argument(BaseModel):
     body: str
     claim_ids: list[str]
     challenges: list[str]
+    model: str | None = None
 
 class Assessment(BaseModel):
     claim_id: str
@@ -81,3 +84,11 @@ class VerificationOutput(BaseModel):
 
 class ReportOutput(BaseModel):
     report: str = Field(min_length=100, max_length=10000)
+
+class ReportSections(BaseModel):
+    perspectives: str = Field(min_length=1,max_length=1200)
+    evidence: str = Field(min_length=1,max_length=1200)
+    tradeoffs: str = Field(min_length=1,max_length=1200)
+    revisions: str = Field(min_length=1,max_length=1200)
+    gaps: str = Field(min_length=1,max_length=1200)
+    priorities: str = Field(min_length=1,max_length=1200)

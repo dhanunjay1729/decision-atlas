@@ -63,6 +63,7 @@ async def analyze(payload: AnalyzeRequest, request: Request):
         async with run_lock:
             try:
                 if await request.is_disconnected(): return
+                before=ledger.total()
                 selected=sources
                 if payload.include_web:
                     yield 'data: '+json.dumps({'type':'progress','message':'Retrieving shared Perplexity evidence'})+'\n\n'
@@ -74,6 +75,7 @@ async def analyze(payload: AnalyzeRequest, request: Request):
                         return
                     if event['type'] == 'complete':
                         event['analysis']['model'] = configuration()['model']
+                        event['analysis']['accounted_usd'] = round(ledger.total()-before,6)
                     yield 'data: '+json.dumps(event)+'\n\n'
             except LimitError as e:
                 yield 'data: '+json.dumps({'type':'error','message':str(e)})+'\n\n'

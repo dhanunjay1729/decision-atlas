@@ -1357,3 +1357,7 @@ main {
 }
 
 .agent-3{background:#e9dfea;color:#6c4671}.agent-4{background:#e5e2d9;color:#665a3c}.claim-chip.unverified,.claim-chip.review{background:#fff1d6;color:#795824}.role-inputs label button{border:0;background:transparent;cursor:pointer;padding:8px;color:#67766c}
+
+.cost-estimate,.assessment-card{padding:12px;margin:12px 0;border:1px solid #d3ddce;border-radius:10px;background:#f5f6ee;font-size:12px}.cost-estimate p,.assessment-card p{margin:6px 0;line-height:1.6}.cost-estimate small,.assessment-card small{color:#67766c}.argument-title small{color:#67766c;font-size:10px}
+
+.allowance-note{font-size:11px;color:#57685b;line-height:1.65;padding:10px;border-radius:8px;background:#edf1e7}

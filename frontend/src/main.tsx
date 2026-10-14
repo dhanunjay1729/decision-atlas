@@ -72,6 +72,22 @@ function App() {
   const [provider, setProvider] = useState("Not connected");
   const [rolesConfirmed, setRolesConfirmed] = useState(false);
   const [notice, setNotice] = useState("");
+  const [cost, setCost] = useState<{estimated_usd:number;planning_upper_usd:number;note:string}|null>(null);
+  const [reviewed, setReviewed] = useState(false);
+  useEffect(() => {setCost(null);setReviewed(false);}, [question, roles, sources, pasted, web]);
+  const validRoles = roles.every(r => r.trim()) && new Set(roles.map(r=>r.trim().toLowerCase())).size === roles.length;
+  async function reviewCost() {
+    setError("");setBusy(true);setProgress("Estimating cost");
+    const controller=new AbortController();abort.current=controller;const id=++runId.current;
+    try {
+      const response=await fetch("/api/estimate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({question,perspectives:roles,sources:textSources,include_web:web}),signal:controller.signal});
+      const data=await response.json();
+      if(!response.ok) throw Error(typeof data.detail==="string"?data.detail:"Review your question and choose distinct perspectives.");
+      if(id!==runId.current)return;
+      setCost(data);setReviewed(true);setNotice("Review the cost and your roles, then click Start debate.");
+    } catch(e) {if(id===runId.current)setError(e instanceof Error?e.message:"Could not estimate cost.");}
+    finally {if(id===runId.current){setBusy(false);setProgress("");}}
+  }
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
   const abort = useRef<AbortController | null>(null);
   const runId = useRef(0);
@@ -293,6 +309,7 @@ function App() {
           if (id !== runId.current) return;
           if (event.type === "error") throw Error(event.message);
           if (event.type === "progress") setProgress(event.message);
+          if (event.type === "sources") setAnalysis(a => a ? {...a,sources:event.sources} : a);
           if (event.type === "argument") {
             setAnalysis((a) =>
               a ? { ...a, arguments: [...a.arguments, event.argument] } : a,
@@ -310,7 +327,7 @@ function App() {
       if (id === runId.current)
         setError(e instanceof Error ? e.message : "Analysis failed.");
     } finally {
-      if (id === runId.current) setBusy(false);
+      if (id === runId.current) {setBusy(false);}
     }
   }
   function exportReport() {
@@ -330,7 +347,7 @@ function App() {
     ? [
         {
           id: "question",
-          position: { x: 280, y: 0 },
+          position: { x: (analysis.perspectives.length - 1)*142, y: 0 },
           data: { label: analysis.question },
           style: {
             background: "#173e35",
@@ -343,7 +360,7 @@ function App() {
         },
         ...analysis.claims.map((c, i) => ({
           id: c.id,
-          position: { x: (i % 3) * 285, y: 140 + Math.floor(i / 3) * 180 },
+          position: { x: c.agent * 285, y: 140 + analysis.claims.slice(0,i).filter(x=>x.agent===c.agent).length*180 },
           data: { label: `${labels[c.status]}\n\n${c.text}` },
           style: {
             width: 245,
@@ -359,7 +376,7 @@ function App() {
           .filter((a) => a.round === 2)
           .map((a) => ({
             id: `revision-${a.agent}`,
-            position: { x: a.agent * 285, y: 500 },
+            position: { x: a.agent * 285, y: 160 + Math.max(...analysis.perspectives.map((_,j)=>analysis.claims.filter(c=>c.agent===j).length))*180 },
             data: {
               label: `${analysis.perspectives[a.agent]} · revision\n\n${a.position}`,
             },
@@ -374,7 +391,7 @@ function App() {
           })),
         ...analysis.sources.map((s, i) => ({
           id: s.id,
-          position: { x: i * 330 + 80, y: 680 },
+          position: { x: i * 330 + 80, y: 330 + Math.max(...analysis.perspectives.map((_,j)=>analysis.claims.filter(c=>c.agent===j).length))*180 },
           data: { label: s.title },
           style: {
             width: 260,
@@ -400,7 +417,7 @@ function App() {
             id: `${s}-${c.id}`,
             source: s,
             target: c.id,
-            label: c.status === "contradicted" ? "contradicts" : "evidence",
+            label: c.status === "contradicted" ? "contradicts" : c.status === "supported" ? "supports" : "referenced passage",
             style: {
               stroke: c.status === "contradicted" ? "#c47462" : "#649378",
             },
@@ -569,7 +586,6 @@ function App() {
                             );
                             setRolesConfirmed(false);
                             setNotice("");
-                            if (!sources.some((s) => s.title !== title) && !pasted.trim()) setWeb(true);
                           }}
                         >
                           <X size={14} />
@@ -610,7 +626,7 @@ function App() {
                   <Globe size={17} />
                   <span>
                     {textSources.length
-                      ? "Include web sources"
+                      ? "Search the web"
                       : "Search the web"}
                     <small>
                       {textSources.length
@@ -672,6 +688,7 @@ function App() {
                   Arguments <ArrowRight size={12} /> Revisions
                 </span>
               </div>
+              {cost && <div className="cost-estimate"><strong>Estimated ${cost.estimated_usd.toFixed(4)}</strong><p>Planning range: ${cost.estimated_usd.toFixed(4)}–${cost.planning_upper_usd.toFixed(4)} · {roles.length*2} arguments · {web?"1 shared search":"No web search"}</p><small>Target: $0.02 per debate on average. Estimates vary; the shared project budget is $2.</small></div>}
               {error && (
                 <div className="error" role="alert">
                   {error}
@@ -685,20 +702,18 @@ function App() {
                   reading ||
                   !question.trim() ||
                   !ready ||
-                  roles.some((r) => !r.trim())
+                  !validRoles
                 }
-                onClick={() => void (rolesConfirmed ? runLive() : prepare())}
+                onClick={() => void (reviewed ? runLive() : reviewCost())}
               >
                 {busy ? (
                   <LoaderCircle size={17} className="spin" />
                 ) : (
                   <Sparkles size={17} />
                 )}{" "}
-                {rolesConfirmed ? "Start debate" : "Prepare perspectives"}{" "}
+                {reviewed ? "Start debate" : "Review cost & start"}{" "}
                 <ArrowRight size={16} />
               </button>
-              <button className="secondary-button" disabled={busy || reading || !ready || question.trim().length < 5 || roles.some(r => !r.trim())} onClick={() => { setRolesConfirmed(true); void runLive(); }}>Start with my perspectives <ArrowRight size={14} /></button>
-              <button className="secondary-button" disabled={busy || reading || !ready || question.trim().length < 5} onClick={() => void prepare()}>Suggest {roles.length} perspectives</button>
               <p className="helper">{web ? "Shared web evidence will be retrieved for all debaters." : "Uses model knowledge and any documents you add. Unsourced facts remain unverified."}</p>
               {!ready && (
                 <p className="pending-note">
@@ -765,7 +780,7 @@ function App() {
                       <Layers size={37} />
                     </span>
                   </div>
-                  <div className="eyebrow">A QUESTION. THREE PERSPECTIVES.</div>
+                  <div className="eyebrow">A QUESTION. MULTIPLE PERSPECTIVES.</div>
                   <h2>
                     Good decisions begin
                     <br />
@@ -881,6 +896,7 @@ function App() {
                                       {analysis.perspectives[a.agent]}
                                     </strong>
                                     <span>{a.position}</span>
+                                    {a.model && <small>{a.model.split("/").pop()}</small>}
                                   </div>
                                   {a.round === 2 && (
                                     <span className="revised">
@@ -1016,6 +1032,7 @@ function App() {
                               : "Model-generated analysis"}{" "}
                             · Decision support ·{" "}
                             {analysis.report.split(/\s+/).length} words
+                            {analysis.accounted_usd !== undefined && ` · Tracked cost $${analysis.accounted_usd.toFixed(4)}`}
                           </div>
                         </>
                       )}
@@ -1109,6 +1126,7 @@ function App() {
             </p>
             <h3>Why this label?</h3>
             <p>{selected.explanation}</p>
+            {selected.assessments?.map(a => <div className="assessment-card" key={a.reviewer}><strong>{a.reviewer} · {labels[a.status]}</strong><p>{a.explanation}</p><small>Passages: {a.source_ids.join(", ") || "None"}</small></div>)}
             <h3>Source passages</h3>
             {selected.source_ids.length ? (
               selected.source_ids.map((id) => {

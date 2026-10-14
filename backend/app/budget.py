@@ -50,3 +50,7 @@ class Ledger:
                 db.commit()
                 raise LimitError('Provider usage exceeded the configured estimate; stop and review model pricing.')
             db.execute('UPDATE costs SET amount = ? WHERE id = ?', (actual_cost, reservation))
+
+    def total(self):
+        with self.connect() as db:
+            return db.execute('SELECT COALESCE(SUM(amount),0) FROM costs').fetchone()[0]

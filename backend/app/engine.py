@@ -42,6 +42,8 @@ async def debate(request: AnalyzeRequest, sources: list[Source], provider):
             prompt = json.dumps({'question':request.question,'your_perspective':role,'round':round_number,'task':('Present initial arguments.' if round_number==1 else 'Challenge previous claims by ID and revise your position when warranted. Do not force a change without a reason.')+' Write 90–120 words. Use a position label of at most eight words. Extract at most two atomic claims, separating empirical facts from value judgments using kind. Challenges must be exact previous claim IDs only. Missing evidence does not prove harm. If no sources are provided, use general model knowledge with uncertainty and never invent citations or imply fresh facts.','sources':evidence,'previous_round_arguments':previous,'previous_claims':previous_claims})
             draft_provider = provider.for_stage('argument',request,agent) if hasattr(provider,'for_stage') else provider
             draft = await draft_provider.generate(SYSTEM, prompt, ArgumentOutput)
+            if getattr(draft_provider,'used_fallback',False):
+                yield {'type':'progress','message':'RunInfra is busy; using the approved Haiku fallback. Remaining calls are paced.'}
             claim_ids = []
             for d in draft.claims:
                 cid = f'c{len(claims)+1}'
@@ -54,12 +56,12 @@ async def debate(request: AnalyzeRequest, sources: list[Source], provider):
         yield {'type':'progress','message':'Checking claims against source passages'}
         verifier = provider.for_stage('verification',request) if hasattr(provider,'for_stage') else provider
         verification_prompt = json.dumps({'task':'Assess every claim exactly once. Supported means a passage establishes this exact claim, not a related weaker claim. Contradicted means positive evidence establishes its negation. If grades were not measured, a claim about grade improvements is insufficient, NOT contradicted. If a causal effect was not established, this does NOT establish absence of an effect. Use insufficient when neither direction is established. Use value for ethical preferences or normative judgments; a should statement need not be empirically supported. Only assess the provided passages, never prior model knowledge. Supported and contradicted require explicit source IDs. Limit explanations to 40 words.','claims':[c.model_dump() for c in claims],'sources':evidence})
-        verification = await verifier.generate(SYSTEM, verification_prompt, VerificationOutput)
+        verification = await verify_batches(verifier, verification_prompt)
         apply_verification(claims,sources,verification)
         if hasattr(provider,'for_stage'):
             yield {'type':'progress','message':'Cross-checking evidence judgments'}
             reviewer = provider.for_stage('crosscheck',request)
-            second = await reviewer.generate(SYSTEM,verification_prompt,VerificationOutput)
+            second = await verify_batches(reviewer, verification_prompt)
             apply_crosscheck(claims,sources,verification,second)
     yield {'type':'progress','message':'Writing the balanced decision brief'}
     report_context = {'task':'Write a balanced report of approximately 400 words, strictly between 300 and 500 words. Use six plain paragraphs of roughly 60–70 words each: perspectives, available evidence, policy trade-offs, debate revisions, missing evidence, and unresolved priorities. Explain the trade-offs with enough detail to reach the target length, without repetition. Do not select a winner or recommend one option. Do not introduce new factual claims. Describe the actual round-two challenges and retained or revised positions, not changes to study design. Claims marked review or unverified must not be described as established.','evidence_note':'No factual claims are source-verified; model knowledge may be outdated.' if not sources else 'Use only supplied passages; absence of evidence is not evidence of absence.','question':request.question,'perspectives':request.perspectives,'arguments':[a.model_dump() for a in arguments],'sources':evidence,'verified_claims':[c.model_dump() for c in claims]}
@@ -92,3 +94,17 @@ def apply_crosscheck(claims, sources, first, second):
         if c.status!=other.status:
             c.status='review'
             c.explanation='The verifiers disagree. Review both explanations and the source passages; no confident evidence label is assigned.'
+
+async def verify_batches(provider, prompt):
+    """Bound structured output size while preserving every claim's assessment."""
+    context=json.loads(prompt)
+    assessments=[]
+    for offset in range(0,len(context['claims']),8):
+        batch={**context,'claims':context['claims'][offset:offset+8]}
+        output=await provider.generate(SYSTEM,json.dumps(batch),VerificationOutput)
+        expected={c['id'] for c in batch['claims']}
+        ids=[a.claim_id for a in output.assessments]
+        if len(ids)!=len(set(ids)) or set(ids)!=expected:
+            raise ValueError('Verification batch did not assess each claim exactly once.')
+        assessments.extend(output.assessments)
+    return VerificationOutput(assessments=assessments)

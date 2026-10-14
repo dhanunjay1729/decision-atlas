@@ -85,3 +85,38 @@ def test_gateway_status_does_not_expose_credentials(monkeypatch):
     monkeypatch.setenv('MODEL_PROVIDER','vercel');monkeypatch.setenv('AI_GATEWAY_API_KEY','private-test-key')
     assert configuration()['web_available'] is True
     assert 'private-test-key' not in json.dumps(configuration())
+
+def test_rate_limited_dense_model_falls_back_once_and_cools_down(monkeypatch,tmp_path):
+    from app.models import ArgumentOutput
+    monkeypatch.setenv('AI_GATEWAY_API_KEY','private-test-key')
+    monkeypatch.setenv('TOTAL_MODEL_BUDGET_USD','1')
+    calls=[]
+    class Client:
+        def __init__(self,**kwargs):pass
+        async def __aenter__(self):return self
+        async def __aexit__(self,*args):pass
+        async def post(self,url,**kwargs):
+            calls.append(kwargs['json'])
+            if len(calls)==1:return httpx.Response(429,json={'error':'private-test-key'})
+            return httpx.Response(200,json={'choices':[{'finish_reason':'stop','message':{'content':json.dumps({'position':'Consider both','body':'A careful argument.','claims':[{'text':'A value choice.','source_ids':[],'kind':'value'}],'challenges':[]})}}],'usage':{'cost':.0002}})
+    monkeypatch.setattr('app.gateway.httpx.AsyncClient',Client)
+    pool=GatewayProvider(Ledger(str(tmp_path/'usage.sqlite3')))
+    request=AnalyzeRequest(question='Which option should we consider?',perspectives=['a','b'])
+    draft=pool.for_stage('argument',request,0)
+    asyncio.run(draft.generate('system','question',ArgumentOutput))
+    assert [x['model'] for x in calls]==['alibaba/qwen3.8-27b','anthropic/claude-haiku-5.5']
+    assert draft.used_fallback and draft.model=='anthropic/claude-haiku-5.5'
+    assert pool.for_stage('argument',request,1).key=='haiku'
+    assert calls[1]['providerOptions']['gateway']['only']==['anthropic']
+
+def test_verification_batches_cover_twenty_claims_without_duplicates():
+    from app.engine import verify_batches
+    class Verifier:
+        def __init__(self):self.sizes=[]
+        async def generate(self,system,prompt,schema):
+            claims=json.loads(prompt)['claims'];self.sizes.append(len(claims))
+            return schema(assessments=[dict(claim_id=c['id'],status='insufficient',source_ids=[],explanation='Not established.') for c in claims])
+    verifier=Verifier()
+    result=asyncio.run(verify_batches(verifier,json.dumps({'claims':[{'id':f'c{i}'} for i in range(20)],'sources':[]})))
+    assert verifier.sizes==[8,8,4]
+    assert len({a.claim_id for a in result.assessments})==20

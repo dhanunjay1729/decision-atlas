@@ -15,6 +15,7 @@ export interface Claim {
   status: EvidenceStatus;
   source_ids: string[];
   explanation: string;
+  assessments?: {reviewer: string; status: EvidenceStatus; explanation: string; source_ids: string[]}[];
 }
 export interface Argument {
   agent: number;
@@ -23,6 +24,7 @@ export interface Argument {
   body: string;
   claim_ids: string[];
   challenges: string[];
+  model?: string | null;
 }
 export interface Analysis {
   question: string;
@@ -33,6 +35,7 @@ export interface Analysis {
   report: string;
   mode: "sample" | "live";
   model?: string;
+  accounted_usd?: number;
   evidence_mode?: "web" | "documents" | "knowledge";
 }
 export interface Setup {

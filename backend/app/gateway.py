@@ -20,11 +20,13 @@ class GatewayProvider:
         self.ledger = ledger
         self.locks = {name: asyncio.Lock() for name in POOL}
         self.last_call = {}
+        self.dense_unavailable_until = 0
 
     def for_stage(self, stage, request=None, agent=0):
         key = 'qwen' if stage == 'prepare' else 'haiku'
         if stage == 'argument':
             key = ('haiku' if agent == 1 else 'qwen') if request.include_web else 'dense'
+        if key=='dense' and time.monotonic()<self.dense_unavailable_until:key='haiku'
         if stage == 'crosscheck': key = 'crosscheck'
         return ScopedGateway(self, key, stage)
 
@@ -35,6 +37,7 @@ class ScopedGateway:
     def __init__(self, parent, key, stage):
         self.parent, self.key, self.stage = parent, key, stage
         self.model = POOL[key][0]
+        self.used_fallback = False
 
     async def generate(self, system, prompt, schema):
         model, provider, ip, op = POOL[self.key]
@@ -60,6 +63,12 @@ class ScopedGateway:
             try:
                 async with httpx.AsyncClient(timeout=60) as client:
                     response = await client.post('https://ai-gateway.vercel.sh/v1/chat/completions',headers={'Authorization':'Bearer '+os.environ['AI_GATEWAY_API_KEY']},json=payload)
+                if response.status_code in (429,502,503,504) and self.key=='dense':
+                    self.parent.dense_unavailable_until=time.monotonic()+120
+                    fallback=ScopedGateway(self.parent,'haiku',self.stage)
+                    result=await fallback.generate(system,prompt,schema)
+                    self.model=fallback.model;self.used_fallback=True
+                    return result
                 if not response.is_success: raise safe_http_error(response.status_code)
                 data=response.json();usage=data.get('usage',{})
                 if usage.get('cost') is not None:

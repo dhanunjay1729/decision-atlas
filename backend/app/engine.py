@@ -39,7 +39,7 @@ async def debate(request: AnalyzeRequest, sources: list[Source], provider):
         previous_ids = {c.id for c in claims}
         for agent, role in enumerate(request.perspectives):
             yield {'type':'progress','message':f'Round {round_number} · {role}'}
-            prompt = json.dumps({'question':request.question,'your_perspective':role,'round':round_number,'task':'Present initial arguments.' if round_number==1 else 'Challenge previous claims by ID and revise your position when warranted. Do not force a change without a reason.','sources':evidence,'previous_round_arguments':previous,'previous_claims':previous_claims})
+            prompt = json.dumps({'question':request.question,'your_perspective':role,'round':round_number,'task':('Present initial arguments.' if round_number==1 else 'Challenge previous claims by ID and revise your position when warranted. Do not force a change without a reason.')+' Write 80–140 words in body and extract at most two distinct claims.','sources':evidence,'previous_round_arguments':previous,'previous_claims':previous_claims})
             draft = await provider.generate(SYSTEM, prompt, ArgumentOutput)
             claim_ids = []
             for d in draft.claims:
@@ -50,11 +50,17 @@ async def debate(request: AnalyzeRequest, sources: list[Source], provider):
             arguments.append(arg)
             yield {'type':'argument','argument':arg.model_dump()}
     yield {'type':'progress','message':'Checking claims against source passages'}
-    verification = await provider.generate(SYSTEM, json.dumps({'task':'Assess every claim exactly once. Supported and contradicted labels require explicit source IDs. Use insufficient for claims not established by the evidence and value for normative judgments. Do not treat absence of support as contradiction.','claims':[c.model_dump() for c in claims],'sources':evidence}), VerificationOutput)
+    verification = await provider.generate(SYSTEM, json.dumps({'task':'Assess every claim exactly once. Supported means a passage establishes this exact claim, not a related weaker claim. Contradicted means positive evidence establishes its negation. If grades were not measured, a claim about grade improvements is insufficient, NOT contradicted. If a causal effect was not established, this does NOT establish absence of an effect. Use insufficient when neither direction is established. Use value for ethical preferences or normative judgments; a should statement need not be empirically supported. Only assess the provided passages, never prior model knowledge. Supported and contradicted require explicit source IDs. Limit explanations to 40 words.','claims':[c.model_dump() for c in claims],'sources':evidence}), VerificationOutput)
     apply_verification(claims,sources,verification)
     yield {'type':'progress','message':'Writing the balanced decision brief'}
-    report = await provider.generate(SYSTEM, json.dumps({'task':'Write a balanced 300–500 word report in plain paragraphs. Explain perspectives, trade-offs, revisions and uncertainty. Do not select a winner or recommend one option. Do not introduce new factual claims.','question':request.question,'perspectives':request.perspectives,'arguments':[a.model_dump() for a in arguments],'verified_claims':[c.model_dump() for c in claims]}), ReportOutput)
+    report_context = {'task':'Write a balanced report of approximately 400 words, strictly between 300 and 500 words. Use six plain paragraphs of roughly 60–70 words each: perspectives, available evidence, policy trade-offs, debate revisions, missing evidence, and unresolved priorities. Explain the trade-offs with enough detail to reach the target length, without repetition. Do not select a winner or recommend one option. Do not introduce new factual claims.','question':request.question,'perspectives':request.perspectives,'arguments':[a.model_dump() for a in arguments],'verified_claims':[c.model_dump() for c in claims]}
+    report = await provider.generate(SYSTEM, json.dumps(report_context), ReportOutput)
     words = len(report.report.split())
     if not 300 <= words <= 500:
-        raise ValueError('The model report did not meet the 300–500 word limit.')
+        yield {'type':'progress','message':'Adjusting the report to the agreed length'}
+        # One bounded correction; do not rerun the debate or add unsupported claims.
+        report_context.update({'task':f'The previous draft contained {words} words, outside the required 300–500 word range. Rewrite it to approximately 400 words in six plain paragraphs. Explain trade-offs and uncertainty in more detail if short; remove repetition if long. Preserve the verified facts, retain balance, and do not add new factual claims.','previous_draft':report.report})
+        report = await provider.generate(SYSTEM, json.dumps(report_context), ReportOutput)
+        if not 300 <= len(report.report.split()) <= 500:
+            raise ValueError('The model report did not meet the 300–500 word limit after one correction.')
     yield {'type':'complete','analysis':{'question':request.question,'perspectives':request.perspectives,'sources':evidence,'claims':[c.model_dump() for c in claims],'arguments':[a.model_dump() for a in arguments],'report':report.report,'mode':'live'}}

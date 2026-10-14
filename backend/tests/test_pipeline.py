@@ -81,3 +81,42 @@ def test_unconfigured_service_never_fakes_live_results(monkeypatch):
         assert response.status_code==503
         response=client.post('/api/analyze',json={'question':'Should attendance be mandatory?','perspectives':['a','b','c'],'include_web':True})
         assert response.status_code==503
+
+def test_report_length_gets_one_correction_without_rerunning_agents():
+    class ShortReportProvider(FakeProvider):
+        def __init__(self):
+            super().__init__()
+            self.report_calls=0
+        async def generate(self,system,prompt,schema):
+            if schema is ReportOutput:
+                self.report_calls+=1
+                if self.report_calls==1:
+                    return ReportOutput(report=' '.join(['An incomplete brief needs more explanation.']*10))
+            return await super().generate(system,prompt,schema)
+    provider=ShortReportProvider()
+    payload=AnalyzeRequest(question='Should attendance be mandatory?',perspectives=['student','faculty','administrator'],sources=[passage()])
+    async def run(): return [e async for e in debate(payload,[passage()],provider)]
+    events=asyncio.run(run())
+    assert events[-1]['type']=='complete'
+    assert len([e for e in events if e['type']=='argument'])==6
+    assert provider.report_calls==2
+
+def test_streaming_api_returns_six_arguments_and_complete_analysis(monkeypatch, tmp_path):
+    import app.main as main
+    monkeypatch.setenv('MODEL_PROVIDER','gemini')
+    monkeypatch.setenv('MODEL_NAME','gemini-3.5-flash-lite')
+    monkeypatch.setenv('MODEL_PREPARE_NAME','gemini-3.5-flash-lite')
+    monkeypatch.setenv('MODEL_API_KEY','fake-test-key')
+    monkeypatch.setenv('MODEL_INPUT_USD_PER_MILLION','0')
+    monkeypatch.setenv('MODEL_OUTPUT_USD_PER_MILLION','0')
+    monkeypatch.setattr(main,'provider',FakeProvider())
+    monkeypatch.setattr(main,'ledger',Ledger(str(tmp_path/'ledger.sqlite3')))
+    monkeypatch.setattr(main,'run_lock',asyncio.Semaphore(1))
+    with TestClient(main.app) as client:
+        response=client.post('/api/analyze',json={'question':'Should attendance be mandatory?','perspectives':['student','faculty','administrator'],'sources':[passage().model_dump()],'include_web':False})
+    assert response.status_code==200
+    events=[json.loads(block[6:]) for block in response.text.split('\n\n') if block.startswith('data: ')]
+    assert len([e for e in events if e['type']=='argument'])==6
+    assert events[-1]['type']=='complete'
+    assert events[-1]['analysis']['model']=='gemini-3.5-flash-lite'
+    assert 'fake-test-key' not in response.text

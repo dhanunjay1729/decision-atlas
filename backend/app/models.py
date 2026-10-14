@@ -1,4 +1,4 @@
-from typing import Literal
+from typing import Annotated, Literal
 from pydantic import BaseModel, Field, model_validator
 
 class Source(BaseModel):
@@ -36,8 +36,8 @@ class AnalyzeRequest(PrepareRequest):
         return self
 
 class PerspectiveOutput(BaseModel):
-    perspectives: list[str] = Field(min_length=3, max_length=3)
-    suggested_question: str | None
+    perspectives: list[Annotated[str, Field(min_length=1, max_length=100)]] = Field(min_length=3, max_length=3)
+    suggested_question: Annotated[str, Field(max_length=800)] | None
 
 class DraftClaim(BaseModel):
     text: str = Field(min_length=1, max_length=500)
@@ -46,7 +46,7 @@ class DraftClaim(BaseModel):
 class ArgumentOutput(BaseModel):
     position: str = Field(min_length=1, max_length=120)
     body: str = Field(min_length=1, max_length=2000)
-    claims: list[DraftClaim] = Field(min_length=1, max_length=4)
+    claims: list[DraftClaim] = Field(min_length=1, max_length=2)
     challenges: list[str] = Field(max_length=8)
 
 class Claim(BaseModel):

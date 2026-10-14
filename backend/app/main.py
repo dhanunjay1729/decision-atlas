@@ -2,6 +2,7 @@ import asyncio
 import json
 import os
 from pathlib import Path
+from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -13,6 +14,7 @@ from .retrieval import retrieve
 
 app = FastAPI(title='Decision Atlas', version='0.1.0')
 ROOT = Path(__file__).resolve().parents[2]
+load_dotenv(ROOT / '.env', override=False)
 ledger = Ledger(os.getenv('LEDGER_PATH', str(ROOT / 'work' / 'usage.sqlite3')))
 provider = ModelProvider(ledger)
 run_lock = asyncio.Semaphore(1)
@@ -35,7 +37,7 @@ async def prepare(payload: PrepareRequest, request: Request):
     available(request)
     try:
         async with run_lock:
-            result = await provider.generate(SYSTEM,json.dumps({'task':'Propose exactly three short, distinct, topic-specific stakeholder or analytic perspectives. If the question presupposes its conclusion, propose a neutral suggested_question. Otherwise use null. Never replace the original question.','question':payload.question}),PerspectiveOutput)
+            result = await provider.generate(SYSTEM,json.dumps({'task':'Propose exactly three distinct topic-specific stakeholder or analytic perspectives. Each perspective must be a short LABEL of at most six words and 100 characters, not a description or an argument. If the question presupposes its conclusion, propose a neutral suggested_question. Otherwise use null. Never replace the original question.','question':payload.question}),PerspectiveOutput)
         if any(not r.strip() or len(r) > 100 for r in result.perspectives):
             raise ValueError('Invalid perspectives')
         if result.suggested_question and len(result.suggested_question) > 800:
@@ -43,7 +45,9 @@ async def prepare(payload: PrepareRequest, request: Request):
         return result
     except LimitError as e:
         raise HTTPException(429,str(e)) from e
-    except (ProviderError,ValueError) as e:
+    except ProviderError as e:
+        raise HTTPException(e.status_code, str(e)) from None
+    except ValueError as e:
         raise HTTPException(502,'Could not prepare valid perspectives. Review the provider configuration.') from e
 
 @app.post('/api/analyze')
@@ -65,7 +69,9 @@ async def analyze(payload: AnalyzeRequest, request: Request):
                     yield 'data: '+json.dumps(event)+'\n\n'
             except LimitError as e:
                 yield 'data: '+json.dumps({'type':'error','message':str(e)})+'\n\n'
-            except (ProviderError, ValueError):
+            except ProviderError as e:
+                yield 'data: '+json.dumps({'type':'error','message':str(e)})+'\n\n'
+            except ValueError:
                 yield 'data: '+json.dumps({'type':'error','message':'The model did not complete a valid analysis. Partial arguments are available, but no completed report is claimed.'})+'\n\n'
     return StreamingResponse(events(),media_type='text/event-stream',headers={'Cache-Control':'no-cache','X-Accel-Buffering':'no'})
 

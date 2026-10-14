@@ -1,5 +1,5 @@
 export type EvidenceStatus =
-  "supported" | "contradicted" | "insufficient" | "value";
+  "supported" | "contradicted" | "insufficient" | "value" | "unverified" | "review";
 export interface Source {
   id: string;
   title: string;
@@ -33,6 +33,7 @@ export interface Analysis {
   report: string;
   mode: "sample" | "live";
   model?: string;
+  evidence_mode?: "web" | "documents" | "knowledge";
 }
 export interface Setup {
   question: string;

@@ -13,6 +13,7 @@ class PrepareRequest(BaseModel):
     question: str = Field(min_length=5, max_length=800)
     sources: list[Source] = Field(default_factory=list, max_length=60)
     include_web: bool = False
+    participant_count: int = Field(default=3, ge=2, le=5)
 
     @model_validator(mode='after')
     def check_sources(self):
@@ -27,21 +28,25 @@ class PrepareRequest(BaseModel):
         return self
 
 class AnalyzeRequest(PrepareRequest):
-    perspectives: list[str] = Field(min_length=3, max_length=3)
+    perspectives: list[str] = Field(min_length=2, max_length=5)
 
     @model_validator(mode='after')
     def check_roles(self):
         if any(not r.strip() or len(r) > 100 for r in self.perspectives):
             raise ValueError('Each perspective needs 1–100 characters.')
+        normalized = [r.strip().casefold() for r in self.perspectives]
+        if len(set(normalized)) != len(normalized):
+            raise ValueError('Choose distinct perspectives.')
         return self
 
 class PerspectiveOutput(BaseModel):
-    perspectives: list[Annotated[str, Field(min_length=1, max_length=100)]] = Field(min_length=3, max_length=3)
+    perspectives: list[Annotated[str, Field(min_length=1, max_length=100)]] = Field(min_length=2, max_length=5)
     suggested_question: Annotated[str, Field(max_length=800)] | None
 
 class DraftClaim(BaseModel):
     text: str = Field(min_length=1, max_length=500)
     source_ids: list[str] = Field(max_length=5)
+    kind: Literal['empirical', 'value'] = 'empirical'
 
 class ArgumentOutput(BaseModel):
     position: str = Field(min_length=1, max_length=120)
@@ -53,7 +58,7 @@ class Claim(BaseModel):
     id: str
     agent: int
     text: str
-    status: Literal['supported', 'contradicted', 'insufficient', 'value'] = 'insufficient'
+    status: Literal['supported', 'contradicted', 'insufficient', 'value', 'unverified', 'review'] = 'insufficient'
     source_ids: list[str]
     explanation: str = 'Verification pending.'
 

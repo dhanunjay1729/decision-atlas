@@ -37,8 +37,8 @@ async def prepare(payload: PrepareRequest, request: Request):
     available(request)
     try:
         async with run_lock:
-            result = await provider.generate(SYSTEM,json.dumps({'task':'Propose exactly three distinct topic-specific stakeholder or analytic perspectives. Each perspective must be a short LABEL of at most six words and 100 characters, not a description or an argument. If the question presupposes its conclusion, propose a neutral suggested_question. Otherwise use null. Never replace the original question.','question':payload.question}),PerspectiveOutput)
-        if any(not r.strip() or len(r) > 100 for r in result.perspectives):
+            result = await provider.generate(SYSTEM,json.dumps({'task':f'Propose exactly {payload.participant_count} distinct topic-specific stakeholder or analytic perspectives. Each perspective must be a short LABEL of at most six words and 100 characters, not a description or an argument. If the question presupposes its conclusion, propose a neutral suggested_question. Otherwise use null. Never replace the original question.','question':payload.question}),PerspectiveOutput)
+        if len(result.perspectives) != payload.participant_count or any(not r.strip() or len(r) > 100 for r in result.perspectives):
             raise ValueError('Invalid perspectives')
         if result.suggested_question and len(result.suggested_question) > 800:
             raise ValueError('Invalid question')
@@ -55,8 +55,6 @@ async def analyze(payload: AnalyzeRequest, request: Request):
     if payload.include_web:
         raise HTTPException(503,'Web retrieval is not connected in this first build. Add document text and switch off web sources to use a configured model.')
     sources = retrieve(payload.question,payload.sources)
-    if not sources:
-        raise HTTPException(422,'Add readable evidence documents or pasted text. The system will not invent sources.')
     available(request)
     async def events():
         async with run_lock:

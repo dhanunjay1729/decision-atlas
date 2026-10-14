@@ -42,8 +42,10 @@ const labels = {
   contradicted: "Contradicted",
   insufficient: "Insufficient evidence",
   value: "Value judgment",
+  unverified: "Model knowledge · unverified",
+  review: "Requires review",
 };
-const initials = ["01", "02", "03"];
+const initials = ["01", "02", "03", "04", "05"];
 const baseRoles = [
   "Individual & community perspective",
   "Practical & institutional perspective",
@@ -56,7 +58,7 @@ function App() {
   const [sources, setSources] = useState<Source[]>([]);
   const [pasted, setPasted] = useState("");
   const [showPaste, setShowPaste] = useState(false);
-  const [web, setWeb] = useState(true);
+  const [web, setWeb] = useState(false);
   const [analysis, setAnalysis] = useState<Analysis | null>(null);
   const [tab, setTab] = useState<Tab>("debate");
   const [selected, setSelected] = useState<Claim | null>(null);
@@ -191,10 +193,9 @@ function App() {
       )
         throw Error("The combined document limit is 30,000 characters.");
       setSources((v) => [...v, ...additions]);
-      setWeb(false);
       setRolesConfirmed(false);
       setNotice(
-        "PDF text extracted locally. It is sent to the backend only when you prepare an analysis.",
+        "PDF text extracted locally. Documents are optional and do not change your web-search setting.",
       );
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not read the PDF.");
@@ -216,8 +217,7 @@ function App() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           question,
-          sources: textSources,
-          include_web: web,
+          participant_count: roles.length,
         }),
         signal: controller.signal,
       });
@@ -615,7 +615,7 @@ function App() {
                     <small>
                       {textSources.length
                         ? "Supplement your documents"
-                        : "When no documents are provided"}
+                        : "Enable when you want current evidence"}
                     </small>
                   </span>
                 </span>
@@ -633,7 +633,7 @@ function App() {
               <div className="divider" />
               <div className="section-title">
                 <h3>Perspectives</h3>
-                <span>3 AGENTS</span>
+                <span>{roles.length} DEBATERS · 2–5</span>
               </div>
               <p className="helper">
                 {rolesConfirmed
@@ -659,9 +659,12 @@ function App() {
                         )
                       }
                     />
+                    <button type="button" aria-label={`Remove perspective ${i + 1}`} disabled={busy || roles.length <= 2} onClick={() => setRoles(v => v.filter((_, j) => i !== j))}><X size={14} /></button>
                   </label>
                 ))}
+                <button className="secondary-button" disabled={busy || roles.length >= 5} onClick={() => setRoles(v => [...v, ""])}><Plus size={14} /> Add perspective</button>
               </div>
+              <p className="helper">AI suggests viewpoints. You choose the final 2–5 debaters.</p>
               <div className="rounds">
                 <GitBranch size={16} />
                 <span>2 rounds</span>
@@ -694,6 +697,9 @@ function App() {
                 {rolesConfirmed ? "Start debate" : "Prepare perspectives"}{" "}
                 <ArrowRight size={16} />
               </button>
+              <button className="secondary-button" disabled={busy || reading || !ready || question.trim().length < 5 || roles.some(r => !r.trim())} onClick={() => { setRolesConfirmed(true); void runLive(); }}>Start with my perspectives <ArrowRight size={14} /></button>
+              <button className="secondary-button" disabled={busy || reading || !ready || question.trim().length < 5} onClick={() => void prepare()}>Suggest {roles.length} perspectives</button>
+              <p className="helper">{web ? "Shared web evidence will be retrieved for all debaters." : "Uses model knowledge and any documents you add. Unsourced facts remain unverified."}</p>
               {!ready && (
                 <p className="pending-note">
                   Live analysis becomes available when a model and evidence
@@ -878,7 +884,7 @@ function App() {
                                   </div>
                                   {a.round === 2 && (
                                     <span className="revised">
-                                      <Check size={12} /> Revised
+                                      <Check size={12} /> Response
                                     </span>
                                   )}
                                 </div>
@@ -927,8 +933,8 @@ function App() {
                               </article>
                             ))}
                           {busy &&
-                            visible < round * 3 &&
-                            visible >= (round - 1) * 3 && (
+                            visible < round * analysis.perspectives.length &&
+                            visible >= (round - 1) * analysis.perspectives.length && (
                               <div className="thinking">
                                 <LoaderCircle size={15} className="spin" />{" "}
                                 {analysis.mode === "sample"
@@ -1022,6 +1028,7 @@ function App() {
                         A supporting passage does not establish source quality
                         or universal truth.
                       </p>
+                      {!analysis.sources.length && <p className="view-note">No sources were supplied. These arguments use model knowledge; factual claims are unverified.</p>}
                       {analysis.sources.map((s) => (
                         <article key={s.id} className="source-card">
                           <div>

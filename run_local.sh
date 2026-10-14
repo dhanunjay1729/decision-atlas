@@ -8,4 +8,4 @@ fi
 if [[ ! -f dist/index.html ]]; then
   npm run build
 fi
-exec .venv/bin/python -m uvicorn app.main:app --app-dir backend --host 127.0.0.1 --port 8000
+exec .venv/bin/python -m uvicorn app.main:app --app-dir backend --host 127.0.0.1 --port "${DECISION_ATLAS_PORT:-8000}"

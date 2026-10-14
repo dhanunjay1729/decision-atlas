@@ -1,92 +1,84 @@
 # Decision Atlas
 
-An evidence-grounded multi-agent debate workspace with configurable Gemini integration.
+A multi-perspective debate workspace for comparing arguments, evidence and priorities.
 
-## What works now
+## User flow
 
-- React/TypeScript interface with editable questions and three perspectives.
-- Local PDF text extraction (5 MB and 30 pages per file; combined evidence text 30,000 characters).
-- Optional pasted text and document/web selection.
-- Clearly labeled, hand-authored attendance-policy sample, played through two visible rounds.
-- Claim inspection, source passages, interactive React Flow graph, balanced report, Markdown export.
-- FastAPI backend with document chunking and BM25-style retrieval, two-round orchestration, structured verification, and report validation.
-- Gemini integration: Flash-Lite currently handles perspective preparation, arguments, verification, and reports; stages remain separately configurable.
-- Configurable Gemini-direct and OpenAI-compatible adapters; secrets stay in an ignored local `.env`.
-- Structured schemas, paced requests, and explicit quota/service errors without paid fallbacks.
-- SQLite request limits and conservative model-cost reservations.
+1. Enter a debatable question. Documents and pasted text are optional.
+2. Turn **Search the web** on when current evidence is wanted. Off uses model knowledge and any documents supplied.
+3. Ask AI to suggest 2–5 viewpoints, or write your own. Edit, add and remove roles; the user chooses the final participants.
+4. Review the estimated cost, then explicitly start the debate.
+5. Follow two rounds: opening perspectives, then specific challenges and retained or revised positions. Inspect claims, sources and the graph; read or export a balanced 300–500 word report with no winner or policy recommendation.
 
-## What is not connected yet
+Unsourced factual claims are labeled **model knowledge—unverified**. Source-backed claims are assessed against selected passages. Haiku and GPT-OSS 20B cross-check the assessments; disagreements receive **requires review**, with both explanations visible. Agreement does not establish universal truth or source quality.
 
-Gemini has been selected and live structured-output probes have been run. Web retrieval is intentionally unavailable; selecting it returns an explicit error rather than fabricated sources. The published static preview includes the interface and sample, but does not host Python. The FastAPI backend can serve the built interface together with its API on a separate Python host. Deployment of the complete live backend, source-quality checks, model-specific tuning, and the human-reviewed evaluation remain future work.
+## Model and retrieval behavior
 
-The sample sources are fictional illustrative passages, not real research. Its labels are hand-authored, not measured verification results. Live document-backed analysis accepts arbitrary questions when Gemini is configured; the sample is tied to its displayed attendance question.
+The server pins the inexpensive models and providers in `backend/app/gateway.py`:
+
+- Perspective suggestions: Qwen 3.7 Flash via Alibaba.
+- Web-off drafts: Qwen 3.8 27B via RunInfra. On temporary capacity/rate-limit failures, one bounded fallback uses Haiku 5.5 via Anthropic; RunInfra is cooled down for two minutes. Actual draft models are displayed.
+- Web-on drafts: two or more Qwen 3.7 Flash perspectives with one Haiku perspective, depending on the user-selected 2–5 participant count.
+- Source-backed verification: Haiku plus GPT-OSS 20B via DeepInfra.
+- Report writing: Haiku, with bounded length correction and a six-section fallback.
+
+No arbitrary or expensive model/provider fallbacks are enabled. All participants in a round see the same fixed previous-round snapshot. Statements, documents, roles and previous arguments are treated as untrusted content rather than instructions.
+
+Web mode uses exactly one shared Perplexity Search through the Vercel AI Gateway SDK. Raw result excerpts and original URLs are retained, not invented from a model summary. Retrieval selects up to five representative passages totaling at most 6,500 characters. When documents and web results are both present, both kinds remain represented. These are partial excerpts, not exhaustive readings of the sources.
 
 ## Run locally
 
+Requires Python 3.12+ and Node.js 22+ (the search helper uses the AI SDK).
+
 ```bash
-npm ci --cache /tmp/decision-atlas-npm-cache
+npm ci
 npm run build
 python -m venv .venv
 .venv/bin/python -m pip install -r backend/requirements.txt
-.venv/bin/python -m uvicorn app.main:app --app-dir backend --host 127.0.0.1 --port 8000
+cp .env.example .env
+# Enter AI_GATEWAY_API_KEY privately in .env.
+bash run_local.sh
 ```
 
-Open http://127.0.0.1:8000. For frontend development, run `npm run dev`; Vite proxies `/api` to FastAPI on port 8000.
+The checkout is `/home/dhanunjay1729/decision-atlas`. FastAPI serves the built frontend and API together. Default URL: http://127.0.0.1:8000. If that port is occupied, use `DECISION_ATLAS_PORT=8003 bash run_local.sh`. The current reviewed preview uses http://127.0.0.1:8003.
 
-## Gemini configuration
+For frontend development, `npm run dev` proxies `/api` to port 8000; change the Vite proxy if using another backend port.
 
-Copy `.env.example` to `.env` and enter the key locally, or set environment variables on the server. FastAPI automatically loads the project-root `.env` without overriding server environment variables. The key is never sent to the browser or committed to Git.
+## Configuration and costs
 
-- `MODEL_PROVIDER=gemini` for the Google direct adapter, or `openai_compatible` for a compatible endpoint.
-- Set `MODEL_NAME` and `MODEL_API_KEY`.
-- For compatible endpoints, set `MODEL_BASE_URL` to the HTTPS API base, such as one ending in `/v1`.
-- Set both per-million input/output prices. Zero is accepted for genuinely free endpoints.
-- Review output-token limits and provider schema support. Not all compatible providers support strict JSON schema.
-- Keep secrets server-side; never use a `VITE_` variable for an API key.
+Use server environment variables or a mode-600, ignored `.env`. Never put credentials in `VITE_` variables, tracked files, browser storage or client requests. FastAPI loads `.env` without overriding existing server variables. `/api/status` exposes readiness and a model-pool label, never credentials.
 
-`/api/status` reveals readiness and the model name, never the API key. A configured status is not proof that the selected provider passes our tests.
+`TOTAL_MODEL_BUDGET_USD=2` is a persistent application cap; it is separate from the earlier $0.50 research allowance. Cost estimates target an average of $0.02 per debate ($2 per 100). This is a planning target, not a promise that 100 arbitrary five-person debates will succeed. Context, search, report corrections and provider failures affect charges. Before each paid call the SQLite ledger reserves a conservative upper bound and settles returned usage. Unknown failures retain their reservation. The report displays tracked cost, which can include retained reservations. A depleted budget stops further calls.
 
-## API
+There are no recurring purchases or automatic credit top-ups. Provider-side pricing changes require reviewing the fixed rate assumptions. Conservative reservations are application safeguards, not a provider billing guarantee.
 
-`POST /api/prepare` proposes three topic-specific perspectives and an optional neutral framing. The user can edit the perspectives and must explicitly accept a suggested question.
+Use a persistent volume for `LEDGER_PATH`. Runs are serialized within one Python process; multiple workers/replicas require shared concurrency control. Preparation and analysis each count toward rate limits. Public deployment should enforce request-body limits and configure trusted proxy IPs. A no-login public demo needs controlled access and monitoring before enabling paid traffic.
 
-`POST /api/analyze` accepts `{question, perspectives, sources, include_web}` and streams progress, argument, completion, or error events through SSE. Live document analysis requires `include_web=false` for this increment. Incoming evidence is document text; the API does not fetch user-supplied URLs.
+Each network IP receives five lifetime debate starts (`MAX_DEBATES_PER_IP=5`). A start consumes a use even if a model later fails; suggestions and cost previews do not consume this allowance. The counter is checked atomically before paid debate work and survives restarts. Only salted IP hashes are recorded for new counters. Shared Wi-Fi shares the allowance, and changing networks can bypass it; this is a demo safeguard, not user identity or hardware tracking. Configure the ASGI trusted-proxy allowlist correctly when hosting, and retain the SQLite volume.
 
-Each round uses a fixed snapshot of the previous round. All agents in the same round see the same prior messages. Factual support labels require valid source IDs; incomplete or duplicate verification output is rejected. Matching a source ID does not establish semantic accuracy: human evaluation is still required.
+## APIs
 
-## Budget and deployment notes
+- `GET /api/allowance`: used and remaining debate starts for this network.
+- `GET /api/status`: readiness and provider-pool label.
+- `POST /api/prepare`: `{question, participant_count}`; returns suggested viewpoints and an optional neutral question. Neither is automatically used as a final choice.
+- `POST /api/estimate`: `{question, perspectives, sources, include_web}`; deterministic planning estimate, no model/search charge.
+- `POST /api/analyze`: same setup; streams progress, selected sources, arguments, completion or explicit errors via SSE.
 
-The default model allowance is $3, leaving room within the discussed $5 total for other services. Reservations use configured prices and conservative token bounds; errors retain the reservation because providers may bill failed requests. These are application controls, not a provider billing guarantee. Configure provider-side spending controls too. Search costs are not included yet.
+Client evidence must be document text; clients cannot supply trusted web sources or arbitrary model IDs. The server does not fetch user-supplied URLs. PDFs are parsed locally (5 MB / 30 pages each; combined text limit 30,000 characters); scanned PDFs require pasted text.
 
-The current request counters include perspective preparation and analysis separately. Configure persistent storage for the ledger on the eventual Python host; an ephemeral database would reset limits. Configure trusted proxy IPs explicitly. The current backend serializes runs in one process; multi-worker deployment needs shared concurrency control. Public-live hosting should add a maximum request-body size before enabling model traffic. PDF parsing currently happens in the browser; scanned documents need pasted text.
+Legacy Gemini-direct and generic OpenAI-compatible adapters remain available for development. They do not provide the pinned gateway pool or shared web-search integration.
 
-## Verification
+## Validation
 
 ```bash
 PYTHONPATH=backend .venv/bin/python -m pytest backend/tests -q
 npm run build
 ```
 
-Backend tests exercise round isolation, retrieval, source-reference validation, budget persistence, rejected client web sources, and unconfigured/live-service behavior. Gemini endpoints have been probed with small structured-output tasks. This is functional testing, not an accuracy benchmark. No general model accuracy or baseline improvement is claimed.
+Tests cover 2–5 participants, equal round snapshots, source-free unverified labels, forged client sources, persistent spending limits, provider pinning, bounded cheap fallback, verification disagreement, single shared search, bounded verification batches, atomic five-start IP allowances and document/web coexistence. The hand-authored attendance sample uses fictional passages; its labels are illustrative.
 
-## Current free-tier model selection
+Live checks of the connected gateway are functional checks, not accuracy benchmarks. A real web run completed with six arguments, four source excerpts and a 425-word report, with tracked cost about $0.00953. A five-debater document run completed with ten arguments and a 358-word report at $0.01156 tracked cost, including the bounded Haiku fallback. A source-free check exposed a RunInfra quota failure and motivated the bounded Haiku fallback. Five-topic model simulations informed the pool; general accuracy, third-round benefit and improvement over a single-agent baseline are not claimed. The human claim/evidence review and deployment remain separate review steps.
 
-- `gemini-3.5-flash-lite`: all current stages, including arguments, evidence verification, and the final report.
-- The preparation model remains separately configurable through `MODEL_PREPARE_NAME`.
-- `gemini-3.8-flash` returned HTTP 503 on two live probes. `gemini-3.6-flash` passed a small probe but returned a service error when starting a full debate. Neither is used as an automatic fallback. Flash-Lite was selected for availability and low latency; this is not a universal reasoning-quality ranking.
+## Deployment
 
-Official references: [models](https://ai.google.dev/gemini-api/docs/models), [free-tier pricing](https://ai.google.dev/gemini-api/docs/pricing), [structured outputs](https://ai.google.dev/gemini-api/docs/generate-content/structured-output), and [rate limits](https://ai.google.dev/gemini-api/docs/rate-limits). Actual account quotas must be checked in AI Studio. A complete analysis normally uses nine model calls: one preparation call and eight debate/verification/report calls. One extra report correction is allowed if its length is outside 300–500 words. Free-tier capacity is not a promise of 100 runs in a day.
-
-`GEMINI_FREE_TIER_ONLY=true` restricts the application to an explicit list of models that have documented free inference tiers, requires zero configured inference prices, and disallows switching to another provider. It does **not** change Google's project billing tier. Keep the Google project on the free tier; enabling billing can incur provider charges even if this app's local accounting prices are zero. There are no automatic paid fallbacks, search grounding, or repeated quota retries.
-
-The default low thinking level and 6,000-token output ceiling give the verifier room for all extracted claims. Request starts are paced six seconds apart by default; adjust this to your actual account quota. A quota failure remains visible and stops the run. Uploaded documents are sent to Google's API during live analysis; Google's free-tier data policy applies.
-
-## Local project location
-
-The working checkout is `/home/dhanunjay1729/decision-atlas`. Start it with `bash run_local.sh`. The virtual environment is ignored and can be recreated using the commands above.
-
-## Live integration check — 14 October 2026
-
-A complete live run using Gemini 3.5 Flash-Lite finished in approximately 52 seconds. It generated three short perspective labels, six arguments across two rounds, twelve claim assessments with validated source IDs, and a 391-word balanced report. The source was an explicitly fictional attendance-policy document used for integration testing. No genuine study, factual accuracy percentage, or superiority over a single-agent baseline is claimed. Human-reviewed verification accuracy and real-source retrieval remain pending.
-
-The integration revealed and fixed excessive perspective-label lengths, output-token limits, and out-of-range report length. Tests cover free-tier model restrictions, sanitized quota/access/service errors, missing and truncated responses, a single bounded report correction, and the streaming API completion contract. The application's selected model and local API key are configured in `.env`; that file is mode 600 and ignored by Git.
+A Dockerfile is included (the image build has not yet been verified) for a single-process Python + Node deployment. Mount persistent storage at `/app/work`, supply `AI_GATEWAY_API_KEY` securely, and set `LEDGER_PATH=/app/work/usage.sqlite3`. The image never copies local credentials or research artifacts. Publication should follow review of live outputs; the current deliverable is the local app and GitHub source.

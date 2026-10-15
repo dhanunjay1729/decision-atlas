@@ -12,7 +12,8 @@ def auth_config():
     project=os.getenv('FIREBASE_PROJECT_ID','')
     key=os.getenv('FIREBASE_WEB_API_KEY','')
     return {'enabled':bool(project and key),'projectId':project,'apiKey':key,
-            'authDomain':os.getenv('FIREBASE_AUTH_DOMAIN',project+'.firebaseapp.com')}
+            'authDomain':os.getenv('FIREBASE_AUTH_DOMAIN') or project+'.firebaseapp.com',
+            'googleEnabled':os.getenv('FIREBASE_GOOGLE_ENABLED')=='true'}
 
 _admin_lock=Lock()
 
@@ -27,9 +28,14 @@ def verify_token(token):
     from firebase_admin import auth
     return auth.verify_id_token(token,app=admin_app(),check_revoked=True)
 
-def user_id(request:Request,required=False):
+def verified_claims(request:Request,required=False):
+    cached=getattr(request.state,'account_claims',False)
+    if cached is not False:
+        if required and cached is None:raise HTTPException(401,'Sign in to view your private debates.')
+        return cached
     header=request.headers.get('authorization','')
     if not header:
+        request.state.account_claims=None
         if required:raise HTTPException(401,'Sign in to view your private debates.')
         return None
     if not auth_config()['enabled']:raise HTTPException(503,'Account services are unavailable.')
@@ -39,6 +45,12 @@ def user_id(request:Request,required=False):
         claims=verify_token(header[7:])
         uid=claims.get('uid') or claims.get('sub')
         if not isinstance(uid,str) or not 1<=len(uid)<=128:raise ValueError('invalid identity')
-        return uid
+        claims['uid']=uid
+        request.state.account_claims=claims
+        return claims
     except Exception:
         raise HTTPException(401,'Your session expired or is invalid. Please sign in again.') from None
+
+def user_id(request:Request,required=False):
+    claims=verified_claims(request,required)
+    return claims['uid'] if claims else None

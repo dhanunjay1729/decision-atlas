@@ -14,7 +14,7 @@ from .retrieval import retrieve
 from .gateway import GatewayProvider, estimate
 from .search import search
 from .http_limits import BodyLimitMiddleware,network_ip
-from .owner import is_owner, valid_token, session, COOKIE, TTL
+from .owner import is_owner
 from .featured import create_store, FeaturedError
 from pydantic import BaseModel, Field
 from .accounts import auth_config, user_id
@@ -157,23 +157,6 @@ def history_get(entry_id:str,request:Request):
 def history_hide(entry_id:str,request:Request):
     uid=user_id(request,required=True)
     return history_call(lambda:history_store.hide(uid,entry_id))
-
-class OwnerLogin(BaseModel):
-    token: str = Field(min_length=1,max_length=256)
-
-@app.post('/api/owner/login')
-def owner_login(payload:OwnerLogin,request:Request):
-    if not valid_token(payload.token):
-        try:ledger.request(network_ip(request))
-        except LimitError:raise HTTPException(429,'Too many login attempts. Try later.') from None
-        raise HTTPException(401,'Invalid owner access token.')
-    response=JSONResponse({'owner':True})
-    response.set_cookie(COOKIE,session(),max_age=TTL,httponly=True,secure=bool(os.getenv('K_SERVICE')),samesite='strict',path='/')
-    return response
-
-@app.post('/api/owner/logout')
-def owner_logout():
-    response=JSONResponse({'owner':False});response.delete_cookie(COOKIE,path='/');return response
 
 class Publication(BaseModel):
     publish_token: str = Field(min_length=1,max_length=256)

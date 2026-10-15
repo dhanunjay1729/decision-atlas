@@ -1,26 +1,25 @@
-"""Owner login with a server secret and short-lived signed, HttpOnly sessions."""
-import hashlib,hmac,os,secrets,time
-from fastapi import Request
+"""Owner privileges derive only from a verified Google account identity."""
+import os
+from fastapi import HTTPException, Request
+from . import accounts
 
-COOKIE='atlas_owner'
-TTL=12*3600
 
-def secret():return os.getenv('ATLAS_OWNER_TOKEN','')
-
-def valid_token(token):
-    key=secret()
-    return len(key)>=32 and hmac.compare_digest(token,key)
-
-def session():
-    payload=f'{int(time.time())+TTL}.{secrets.token_hex(16)}'
-    return payload+'.'+hmac.new(secret().encode(),payload.encode(),hashlib.sha256).hexdigest()
-
-def is_owner(request:Request):
-    if len(secret())<32:return False
-    value=request.cookies.get(COOKIE,'')
+def is_owner(request: Request) -> bool:
+    expected = os.getenv('OWNER_GOOGLE_EMAIL', '').strip().casefold()
+    if not expected:
+        return False
     try:
-        expires,nonce,signature=value.split('.')
-        payload=expires+'.'+nonce
-        expected=hmac.new(secret().encode(),payload.encode(),hashlib.sha256).hexdigest()
-        return time.time()<int(expires)<=time.time()+TTL and hmac.compare_digest(signature,expected)
-    except (ValueError,TypeError):return False
+        claims = accounts.verified_claims(request)
+    except HTTPException:
+        return False
+    if not isinstance(claims, dict):
+        return False
+    firebase = claims.get('firebase')
+    email = claims.get('email')
+    return (
+        claims.get('email_verified') is True
+        and isinstance(email, str)
+        and email.casefold() == expected
+        and isinstance(firebase, dict)
+        and firebase.get('sign_in_provider') == 'google.com'
+    )

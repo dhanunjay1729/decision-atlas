@@ -34,7 +34,7 @@ import * as pdfjs from "pdfjs-dist";
 import pdfWorker from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 import { sample } from "./sample";
 import {Accounts, MyDebates, useAccount} from "./accounts";
-import {FeaturedDebates, OwnerAccess, PublishDebate, type Allowance} from "./community";
+import {FeaturedDebates, PublishDebate, type Allowance} from "./community";
 import type { Analysis, Claim, Source } from "./types";
 import "@xyflow/react/dist/style.css";
 import "./style.css";
@@ -74,7 +74,7 @@ function App() {
   const [allowance, setAllowance] = useState<Allowance|null>(null);
   const [page,setPage] = useState<'studio'|'featured'|'account'|'history'>('studio');
   const [featuredVersion,setFeaturedVersion] = useState(0);
-  function refreshAllowance() {fetch("/api/allowance").then(r=>r.ok?r.json():null).then(a=>{if(a)setAllowance(a);}).catch(()=>{});}
+  function refreshAllowance() {account.getToken().then(token=>fetch("/api/allowance",{headers:token?{Authorization:'Bearer '+token}:{}})).then(r=>r.ok?r.json():null).then(a=>{if(a)setAllowance(a);}).catch(()=>{});}
   useEffect(()=>{refreshAllowance();const timer=setInterval(refreshAllowance,60000);return()=>clearInterval(timer);},[]);
   const validRoles = roles.every(r => r.trim()) && new Set(roles.map(r=>r.trim().toLowerCase())).size === roles.length;
   const dailyPaused=allowance?.daily?.available===false;
@@ -339,7 +339,7 @@ function App() {
     if(previousAccount.current===uid)return;
     const hadPrivateAccount=!!previousAccount.current;
     previousAccount.current=uid;
-    stop();setAnalysis(null);setSelected(null);setVisible(0);setNotice("");setError("");
+    stop();setAnalysis(null);setSelected(null);setVisible(0);setNotice("");setError("");refreshAllowance();
     if(hadPrivateAccount){setQuestion("");setRoles(current=>current.map(()=>""));setSources([]);setPasted("");setSuggestion("");setRolesConfirmed(false);}
   },[account.user?.uid]);
   const samplePlaying = analysis?.mode === "sample" && busy;
@@ -499,7 +499,7 @@ function App() {
           <button aria-current={page==='account'?'page':undefined} onClick={()=>setPage('account')}>{account.user?'Account':'Sign in / Sign up'}</button>
         </nav>
         <main>
-          {page === 'account' ? <Accounts account={account}/> : page === 'history' ? <><MyDebates getToken={account.getToken} version={historyVersion} onOpen={a=>{stop();setAnalysis(a);setVisible(a.arguments.length);setSelected(null);setTab('debate');setProgress('Saved private debate');setPage('studio');}}/>{!account.user&&<button className='secondary-button' onClick={()=>setPage('account')}>Sign in / Sign up</button>}</> : page === 'featured' ? <FeaturedDebates owner={!!allowance?.owner} refresh={featuredVersion} onOpen={a=>{stop();setAnalysis(a);setVisible(a.arguments.length);setSelected(null);setTab("debate");setProgress("Published debate");setPage("studio");}}/> : <>
+          {page === 'account' ? <Accounts account={account}/> : page === 'history' ? <><MyDebates getToken={account.getToken} version={historyVersion} onOpen={a=>{stop();setAnalysis(a);setVisible(a.arguments.length);setSelected(null);setTab('debate');setProgress('Saved private debate');setPage('studio');}}/>{!account.user&&<button className='secondary-button' onClick={()=>setPage('account')}>Sign in / Sign up</button>}</> : page === 'featured' ? <FeaturedDebates getToken={account.getToken} owner={!!allowance?.owner} refresh={featuredVersion} onOpen={a=>{stop();setAnalysis(a);setVisible(a.arguments.length);setSelected(null);setTab("debate");setProgress("Published debate");setPage("studio");}}/> : <>
           {dailyPaused && <div className="service-pause" role="status">Live debates are paused for today. The sample and Featured debates are still available. New debates resume after {new Date(allowance!.daily!.resets_at).toLocaleString()}.</div>}
           <div className="page-heading">
             <div>
@@ -728,7 +728,7 @@ function App() {
                   !question.trim() ||
                   !ready ||
                   allowance?.remaining === 0 || dailyPaused ||
-                  !validRoles || account.loading
+                  !validRoles
                 }
                 onClick={() => void runLive()}
               >
@@ -740,7 +740,7 @@ function App() {
                 {dailyPaused ? "Debates paused today" : "Start debate"}{" "}
                 <ArrowRight size={16} />
               </button>
-              <p className="helper">{account.user ? "Completed debates are saved privately to My debates." : "Sign in before starting to save this debate to your private history."}</p>
+              <p className="helper">{account.user ? "Completed debates are saved privately to My debates." : "No account needed to debate. Sign in only if you want to save future debates."}</p>
               <p className="helper">{web ? "Shared web evidence will be retrieved for all debaters." : "Uses model knowledge and any documents you add. Unsourced facts remain unverified."}</p>
               {!ready && (
                 <p className="pending-note">
@@ -1104,7 +1104,6 @@ function App() {
             </section>
           </div>
           </>}
-          <OwnerAccess owner={!!allowance?.owner} onChange={refreshAllowance}/>
           <footer className="page-footer">
             <span>
               <ShieldCheck size={14} /> Evidence supports claims. It does not

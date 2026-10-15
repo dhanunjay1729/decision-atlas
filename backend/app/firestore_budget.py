@@ -3,11 +3,12 @@
 The client and transaction runner are injectable for offline behavior tests.
 Actual SDK transaction integration must also be checked against Firestore before publishing.
 """
-import hashlib,ipaddress,os,secrets,time,uuid
+import hashlib,ipaddress,os,re,secrets,time,uuid
 from .budget import LimitError
 
 class FirestoreLedger:
-    def __init__(self,client=None,runner=None):
+    def __init__(self,client=None,runner=None,collection="decision_atlas"):
+        if not re.fullmatch(r"[a-zA-Z0-9_]{1,80}",collection):raise ValueError("Invalid ledger collection.")
         if client is None:
             from google.cloud import firestore
             client=firestore.Client(database='(default)')
@@ -15,7 +16,7 @@ class FirestoreLedger:
         self.client=client
         self.runner=runner
         if runner is None:raise ValueError('A transaction runner is required for an injected client.')
-        self.collection=client.collection('decision_atlas')
+        self.collection=client.collection(collection)
         self.state=self.collection.document('budget')
         def initialize(tx):
             data=self._read(self.state,tx)

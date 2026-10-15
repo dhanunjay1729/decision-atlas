@@ -115,5 +115,10 @@ def select_sources(question,sources):
 def estimate_cost(payload:AnalyzeRequest):
     return estimate(payload,select_sources(payload.question,payload.sources))
 
+@app.get('/api/_deployment/network')
+def deployment_network(request:Request):
+    if os.getenv('ATLAS_DEPLOYMENT_DIAGNOSTICS')!='true':raise HTTPException(404,'Not found')
+    return {'peer':request.client.host if request.client else None,'forwarded':request.headers.getlist('x-forwarded-for')}
+
 if (ROOT/'dist').exists():
     app.mount('/',StaticFiles(directory=ROOT/'dist',html=True),name='frontend')

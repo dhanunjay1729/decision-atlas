@@ -38,3 +38,10 @@ def test_normal_api_body_still_reaches_validation():
     with TestClient(app) as client:
         assert client.post('/api/estimate',json={'question':'Which is preferable?','perspectives':['a','b']}).status_code==200
         assert client.post('/api/estimate',content='x'*(MAX_BODY_BYTES+1),headers={'content-type':'application/json'}).status_code==413
+
+def test_private_deployment_diagnostics_are_disabled_by_default(monkeypatch):
+    from app.main import app
+    monkeypatch.delenv('ATLAS_DEPLOYMENT_DIAGNOSTICS',raising=False)
+    with TestClient(app) as client:assert client.get('/api/_deployment/network').status_code==404
+    monkeypatch.setenv('ATLAS_DEPLOYMENT_DIAGNOSTICS','true')
+    with TestClient(app) as client:assert client.get('/api/_deployment/network',headers={'x-forwarded-for':'198.51.100.1'}).json()['forwarded']==['198.51.100.1']

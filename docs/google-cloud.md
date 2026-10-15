@@ -1,6 +1,6 @@
 # Google Cloud deployment: private validation first
 
-Status: deployment preparation, not a published service. Google Cloud authentication and the target project are not connected on this workstation. The Docker image and real Firestore SDK integration must pass validation before publishing. Unit tests exercise ledger behavior with a transactional fake; they do not prove live Firestore integration.
+Status: publicly deployed at [Decision Atlas](https://decision-atlas-358533498865.us-central1.run.app/). CLI authentication, Docker build/runtime, real Firestore transactions and all three hosted evidence modes were validated. This guide retains the private-first setup procedure for reproducibility.
 
 ## What the user supplies
 
@@ -53,3 +53,18 @@ Add `--apply` only when the required resources, runtime identity, image and secr
 6. Only after these checks, grant public invocation and verify the resulting URL. No public IAM change has been made by the preparation script.
 
 Official guides: [Deploy containers](https://docs.cloud.google.com/run/docs/deploying), [Runtime identity](https://docs.cloud.google.com/run/docs/securing/service-identity), [Secrets](https://docs.cloud.google.com/run/docs/configuring/services/secrets), [Firestore server client](https://docs.cloud.google.com/firestore/native/docs/create-database-server-client-library).
+
+## Current deployment record
+
+- Project: `decision-atlas` (`358533498865`); app and default Standard/Native Firestore database in `us-central1`. Firestore reported `freeTier: true` at creation.
+- Runtime identity: `decision-atlas-runtime@decision-atlas.iam.gserviceaccount.com`. Firestore data access on this dedicated project; access to only the `atlas-gateway` secret, version 1. No service-account key file was created.
+- Public invocation is enabled on the Cloud Run service only. Unauthenticated direct Firestore reads returned 403. The disabled deployment diagnostic route returns 404.
+- Request-based CPU allocation, 1 CPU, 512 MiB, minimum zero / maximum one instance, concurrency two, 600-second request timeout. Google Cloud infrastructure remains metered; the $2 app cap covers model/search costs, not all cloud services.
+- On this direct Cloud Run ingress, the observed socket peer was within `169.254.0.0/16`; Google appended one actual client address to the forwarded chain. Normal and forged-prefix requests had the same rightmost client address. Current settings: `TRUSTED_PROXY_HOPS=1`, `TRUSTED_PROXY_CIDRS=169.254.0.0/16`, Uvicorn proxy parsing off. Revalidate before adding a load balancer/proxy or changing ingress architecture. Do not reuse these values blindly on another host.
+- The private three-mode suite and suggestions used $0.020553 tracked model cost. The private socket-peer test allowance was filled to five without additional model calls; the next HTTP analysis returned 429 with an unchanged cost total. After switching to client-IP identity, the tested client had all five starts available. Previous spending records remained in Firestore across revisions.
+- Hosted smoke outputs: knowledge 316 words / 4 arguments; fictional document 321 words / 10 arguments; web 328 words / 6 arguments / 4 source excerpts. No general accuracy superiority is claimed.
+- Public browser checks covered model readiness, the free cost preview, 2–5 participant controls and a 375-pixel mobile layout without horizontal overflow.
+
+For routine image updates, use `gcloud run services update decision-atlas --image=REVIEWED_DIGEST --region=us-central1 --project=decision-atlas` to preserve the verified environment and runtime identity. The preparation script intentionally defaults to a private preview and zero trusted proxy hops, so re-running it is not the production update procedure. Retain the same Firestore collection, budget document and salt; do not reset them to deploy.
+
+Current reviewed release image: `us-central1-docker.pkg.dev/decision-atlas/decision-atlas/app@sha256:a1578c8cfa41fa6042245792e155f346b8ad1ea3795fcb74be97d252b47ae506`.

@@ -2,6 +2,8 @@
 
 A multi-perspective debate workspace for comparing arguments, evidence and priorities.
 
+**Live app:** [Decision Atlas](https://decision-atlas-358533498865.us-central1.run.app/).
+
 ## User flow
 
 1. Enter a debatable question. Documents and pasted text are optional.
@@ -21,7 +23,7 @@ The server pins the inexpensive models and providers in `backend/app/gateway.py`
 - Web-on drafts: two or more Qwen 3.7 Flash perspectives with one Haiku perspective, depending on the user-selected 2–5 participant count.
 - Claim classification: a separate Haiku call distinguishes testable outcomes from pure value priorities.
 - Source-backed verification: Haiku plus GPT-OSS 20B via DeepInfra.
-- Report writing: Haiku, with bounded length correction and a six-section fallback. A separate Haiku review checks neutrality and factual language, with one bounded content correction. A narrow phrase guard covers observed recommendation leaks; neither check guarantees perfect neutrality.
+- Report writing: Haiku, with bounded length correction and a six-section fallback. A separate Haiku review checks direct recommendations and winner language, with one bounded content correction. A narrow phrase guard covers observed recommendation leaks; neither check guarantees perfect neutrality.
 
 No arbitrary or expensive model/provider fallbacks are enabled. All participants in a round see the same fixed previous-round snapshot. Statements, documents, roles and previous arguments are treated as untrusted content rather than instructions.
 
@@ -82,7 +84,9 @@ Live checks of the connected gateway are functional checks, not accuracy benchma
 
 ## Deployment
 
-The agreed target is **Google Cloud Run + Firestore**. See [the deployment guide](docs/google-cloud.md) for the user setup, private deployment command and validation gates. The Firestore adapter has offline transactional behavior tests; live SDK validation remains required. Cloud Run refuses the local SQLite backend so updates cannot silently reset cost controls. No public service has been deployed.
+The agreed target is **Google Cloud Run + Firestore**. See [the deployment guide](docs/google-cloud.md) for the user setup, private deployment command and validation gates. The Firestore adapter has offline transactional tests and has passed live SDK checks for persistence, budget reservations and the five-start maximum. Cloud Run refuses the local SQLite backend so updates cannot silently reset cost controls. The service is deployed publicly; the model key and Firestore access stay server-side.
 
 
-A Dockerfile is included (the image build has not yet been verified) for a single-process Python + Node deployment. Mount persistent storage at `/app/work`, supply `AI_GATEWAY_API_KEY` securely, and set `LEDGER_PATH=/app/work/usage.sqlite3`. The image never copies local credentials or research artifacts. Publication should follow review of live outputs; the current deliverable is the local app and GitHub source.
+A Dockerfile is included and the image build has been verified for a single-process Python + Node deployment. Mount persistent storage at `/app/work`, supply `AI_GATEWAY_API_KEY` securely, and set `LEDGER_PATH=/app/work/usage.sqlite3`. The image never copies local credentials or research artifacts. The Google Cloud deployment uses Firestore instead of a container-local disk. See the deployment guide for the verified ingress settings and update procedure.
+
+Architecture: [data flow and component responsibilities](docs/architecture.md).

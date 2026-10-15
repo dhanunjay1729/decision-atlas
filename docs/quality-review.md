@@ -40,3 +40,11 @@ PYTHONPATH=backend .venv/bin/python scripts/evaluate.py --live --max-usd .06 --n
 The runner refuses an existing output directory, uses a separate persistent budget ledger, pins the approved cheap model pool and saves failures alongside successes. It does not consume or reset public per-IP counters. Each invocation must fit the remaining user-authorized research budget. Web sources can change; these are repeated smoke tests rather than identical deterministic benchmarks.
 
 The defensible benefit demonstrated so far is inspectable perspectives, specific challenge references, uncertainty labels and visible verifier disagreement. Greater factual accuracy than a single-agent baseline has **not** been established.
+
+## Deployment validation follow-up
+
+The broad report review incorrectly rejected attributed participant positions and cautious evidence gaps. It was narrowed to direct report-level advice and winner language, using only the literal report. It no longer attempts a second full factual assessment of the report. Two neutral saved reports were accepted, and the saved monitored-adoption recommendation was rejected. A fresh source-free pipeline completed with 308 words at $0.001556 tracked cost.
+
+The actual private Cloud Run deployment then completed all three evidence modes: source-free (2 participants, 4 arguments, 316 words, $0.001503), fictional document (5 participants, 10 arguments, 321 words, $0.005871), web (3 participants, 6 arguments, 4 excerpts, 328 words, $0.013156). These are functional and manually inspected smoke checks, not accuracy benchmarks. Search results and generated claims still require source-quality review. Automated tests: 55 passing; frontend build passes.
+
+The Firestore SDK was checked against the real default database in isolated test collections: persisted reservations/settlements, overspend rejection, and a five-start maximum. Under contention, a request can fail closed with a storage-unavailable message rather than consume model budget. The exhausted private HTTP allowance returned 429 without changing the cost ledger.

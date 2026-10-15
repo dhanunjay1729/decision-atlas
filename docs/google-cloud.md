@@ -78,7 +78,7 @@ Owner privileges now derive from a Firebase-verified Google login: the token mus
 
 Optional publication saves sanitized private snapshots in 500 bounded slots. Publication capabilities expire after 24 hours; expired slots are overwritten on reuse. Only explicit consent exposes a completed snapshot in Featured debates. Public copies contain generated prose and source metadata, not source passages, costs, keys, publication tokens, or voter hashes. Users must review their generated prose for private information. The gallery retains at most 200 posts (including hidden posts); a normalized salted-IP hash limits each network to one like per post. Ranking combines likes and recency, not evidence quality. The owner can hide a post to remove public access without permanently deleting its snapshot.
 
-Offline tests and a real Firestore SDK check validate the new quota/gallery transactions in an isolated collection; see `evaluation/community-cloud-checks.json`. No model calls are needed for these checks.
+Offline tests and a real Firestore SDK check validated daily reservations and settlement refunds, consent-only publication, private source passages, unique network votes, and owner moderation in an isolated collection. No model calls were needed for these checks.
 
 The daily-cap rollout migrated 137 existing reservations for 2026-10-15 into that day’s accounting ($0.086111), marking their reservation day while preserving lifetime totals, IP salt, and start counters. The owner and daily-cap release passed 82 offline tests plus the isolated real Firestore checks.
 
@@ -90,9 +90,11 @@ The runtime identity has `roles/firebaseauth.viewer` for Firebase Admin token re
 
 Signed-in completed runs are saved privately with selected source passages and claim assessments. The store uses a separate namespace, salted account identifiers, and bounded allocations of 100 retained snapshots per account and 1,000 globally. Hidden snapshots remain private and count toward retention limits. A history save failure is reported alongside the completed result rather than discarding paid work. Guest runs are not attached retroactively.
 
-The release passed 115 offline tests and a real managed-auth/Firestore check in an isolated collection (`evaluation/accounts-cloud-checks.json`). Signup and password login were verified with disposable synthetic accounts, without model calls. Signup does not bypass visitor usage limits; owner access remains separate.
+The release passed 115 offline tests and a real managed-auth/Firestore check in an isolated collection. Managed tokens verified successfully; forged tokens and cross-account history access were rejected, and private evidence passages persisted correctly. Signup and password login were verified with disposable synthetic accounts, without model calls. Signup does not bypass visitor usage limits; owner access remains separate.
 
 
 Google sign-in requires enabling the Google provider in Firebase Authentication and configuring its web OAuth client. `FIREBASE_GOOGLE_ENABLED=true` exposes the Google button once that setup is complete. Support email and OAuth client setup are handled through the project’s authenticated Firebase console. The former `atlas-owner` secret is no longer used by the application.
 
 Google provider setup is enabled and its web client is configured. Release `decision-atlas-00007-6sp` serves the Google-owner/account-history image above. The public login page was checked for the Google button, optional guest use, and removal of the former owner form.
+
+Final deployed authentication checks confirmed signed-in history access, rejection of guest/forged/deleted-account tokens, normal accounts receiving no owner privileges, and denial of direct browser access to private Firestore data. Synthetic test accounts were cleaned up afterward. One-off boolean check exports are omitted from the repository; reusable tests and evaluation fixtures remain tracked.

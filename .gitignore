@@ -9,3 +9,6 @@ __pycache__/
 
 work/
 .sites-runtime/
+
+# Obsolete generated hosting metadata (production uses Cloud Run).
+.openai/

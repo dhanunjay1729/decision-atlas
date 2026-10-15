@@ -67,4 +67,4 @@ Official guides: [Deploy containers](https://docs.cloud.google.com/run/docs/depl
 
 For routine image updates, use `gcloud run services update decision-atlas --image=REVIEWED_DIGEST --region=us-central1 --project=decision-atlas` to preserve the verified environment and runtime identity. The preparation script intentionally defaults to a private preview and zero trusted proxy hops, so re-running it is not the production update procedure. Retain the same Firestore collection, budget document and salt; do not reset them to deploy.
 
-Current reviewed release image: `us-central1-docker.pkg.dev/decision-atlas/decision-atlas/app@sha256:a1578c8cfa41fa6042245792e155f346b8ad1ea3795fcb74be97d252b47ae506`.
+Current reviewed release image: `us-central1-docker.pkg.dev/decision-atlas/decision-atlas/app@sha256:61350813c5d45deae7dd470b7a27568708eb8e4ae8aca0cf443ea42b93750e1f`.

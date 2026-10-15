@@ -1,0 +1,17 @@
+{
+  "source":{"id":"s1","title":"Fictional evaluation scenario","text":"Fictional scenario, not a real study. A four-week email-reminder pilot with 40 volunteers observed attendance increase from 70% to 78%. There was no comparison group. Grades, communication skills, accessibility, enforcement costs and transport barriers were not measured. A separate survey of 100 students found 60 opposed mandatory attendance, 25 supported it and 15 were undecided. Students with documented illness could request exemptions."},
+  "claims":[
+    {"id":"c1","text":"The pilot involved 40 volunteers.","kind":"empirical","status":"supported"},
+    {"id":"c2","text":"Recorded attendance rose by eight percentage points.","kind":"empirical","status":"supported"},
+    {"id":"c3","text":"The pilot used a comparison group.","kind":"empirical","status":"contradicted"},
+    {"id":"c4","text":"Email reminders caused attendance to increase.","kind":"empirical","status":"insufficient"},
+    {"id":"c5","text":"Mandatory attendance improved grades.","kind":"empirical","status":"insufficient"},
+    {"id":"c6","text":"Mandatory attendance had no effect on grades.","kind":"empirical","status":"insufficient"},
+    {"id":"c7","text":"Most surveyed students opposed compulsory attendance.","kind":"empirical","status":"supported"},
+    {"id":"c8","text":"Students with documented illness could not request exemptions.","kind":"empirical","status":"contradicted"},
+    {"id":"c9","text":"Group assignments develop communication skills.","kind":"empirical","status":"insufficient"},
+    {"id":"c10","text":"We should prioritize student autonomy.","kind":"value","status":"value"},
+    {"id":"c11","text":"Colleges should require attendance because it improves grades.","kind":"empirical","status":"insufficient"},
+    {"id":"c12","text":"Flexible attendance reduces transport barriers.","kind":"empirical","status":"insufficient"}
+  ]
+}

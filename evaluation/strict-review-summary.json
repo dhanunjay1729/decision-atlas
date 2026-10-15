@@ -1,0 +1,78 @@
+{
+  "version": 1,
+  "fixture_note": "Developer-authored, tiny smoke suite. Baseline is one Haiku call with matched selected evidence, not a cost-matched or strongest-possible single-agent system. Automated counts do not measure factual accuracy.",
+  "cases": [
+    {
+      "id": "knowledge",
+      "participants": 2,
+      "evidence_cost_usd": 0.0,
+      "debate": {
+        "completed": false,
+        "error": "The reviewed report did not meet the word range.",
+        "accounted_usd": 0.002372
+      },
+      "baseline": {
+        "completed": true,
+        "claims": 5,
+        "report_words": 279,
+        "accounted_usd": 0.000577,
+        "seconds": 6.8,
+        "model": "anthropic/claude-haiku-5.5"
+      }
+    },
+    {
+      "id": "documents",
+      "participants": 5,
+      "evidence_cost_usd": 0.0,
+      "debate": {
+        "completed": false,
+        "error": "The reviewed report did not meet the word range.",
+        "accounted_usd": 0.009039
+      },
+      "baseline": {
+        "completed": true,
+        "claims": 8,
+        "report_words": 331,
+        "accounted_usd": 0.000757,
+        "seconds": 8.7,
+        "model": "anthropic/claude-haiku-5.5"
+      }
+    },
+    {
+      "id": "web",
+      "participants": 3,
+      "evidence_cost_usd": 0.005186,
+      "debate": {
+        "completed": false,
+        "error": "The model returned invalid structured output. No completed result is claimed.",
+        "accounted_usd": 0.014701
+      },
+      "baseline": {
+        "completed": true,
+        "claims": 10,
+        "report_words": 320,
+        "accounted_usd": 0.006266,
+        "seconds": 9.4,
+        "model": "anthropic/claude-haiku-5.5"
+      }
+    }
+  ],
+  "verification": {
+    "kind_correct": 12,
+    "kind_total": 12,
+    "single_verifier": {
+      "exact": 11,
+      "review": 0,
+      "wrong_nonabstained": 1,
+      "total": 12
+    },
+    "crosschecked": {
+      "exact": 11,
+      "review": 1,
+      "wrong_nonabstained": 0,
+      "total": 12
+    },
+    "accounted_usd": 0.001221
+  },
+  "accounted_usd": 0.029748
+}

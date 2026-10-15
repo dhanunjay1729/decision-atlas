@@ -1,0 +1,104 @@
+{
+  "version": 1,
+  "fixture_note": "Developer-authored, tiny smoke suite. Baseline is one Haiku call with matched selected evidence, not a cost-matched or strongest-possible single-agent system. Automated counts do not measure factual accuracy.",
+  "cases": [
+    {
+      "id": "knowledge",
+      "participants": 2,
+      "evidence_cost_usd": 0.0,
+      "debate": {
+        "completed": true,
+        "arguments": 4,
+        "claims": 8,
+        "report_words": 317,
+        "sources": 0,
+        "statuses": {
+          "unverified": 8
+        },
+        "accounted_usd": 0.002234,
+        "seconds": 28.8
+      },
+      "baseline": {
+        "completed": true,
+        "claims": 5,
+        "report_words": 264,
+        "accounted_usd": 0.000556,
+        "seconds": 7.0,
+        "model": "anthropic/claude-haiku-5.5"
+      }
+    },
+    {
+      "id": "documents",
+      "participants": 5,
+      "evidence_cost_usd": 0.0,
+      "debate": {
+        "completed": true,
+        "arguments": 10,
+        "claims": 20,
+        "report_words": 310,
+        "sources": 1,
+        "statuses": {
+          "insufficient": 10,
+          "review": 1,
+          "supported": 7,
+          "value": 2
+        },
+        "accounted_usd": 0.005826,
+        "seconds": 103.7
+      },
+      "baseline": {
+        "completed": true,
+        "claims": 10,
+        "report_words": 270,
+        "accounted_usd": 0.000712,
+        "seconds": 14.3,
+        "model": "anthropic/claude-haiku-5.5"
+      }
+    },
+    {
+      "id": "web",
+      "participants": 3,
+      "evidence_cost_usd": 0.005183,
+      "debate": {
+        "completed": true,
+        "arguments": 6,
+        "claims": 12,
+        "report_words": 401,
+        "sources": 4,
+        "statuses": {
+          "insufficient": 2,
+          "supported": 8,
+          "value": 2
+        },
+        "accounted_usd": 0.011604,
+        "seconds": 100.8
+      },
+      "baseline": {
+        "completed": true,
+        "claims": 10,
+        "report_words": 281,
+        "accounted_usd": 0.006216,
+        "seconds": 7.6,
+        "model": "anthropic/claude-haiku-5.5"
+      }
+    }
+  ],
+  "verification": {
+    "kind_correct": 12,
+    "kind_total": 12,
+    "single_verifier": {
+      "exact": 12,
+      "review": 0,
+      "wrong_nonabstained": 0,
+      "total": 12
+    },
+    "crosschecked": {
+      "exact": 12,
+      "review": 0,
+      "wrong_nonabstained": 0,
+      "total": 12
+    },
+    "accounted_usd": 0.001193
+  },
+  "accounted_usd": 0.023158
+}

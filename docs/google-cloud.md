@@ -67,4 +67,17 @@ Official guides: [Deploy containers](https://docs.cloud.google.com/run/docs/depl
 
 For routine image updates, use `gcloud run services update decision-atlas --image=REVIEWED_DIGEST --region=us-central1 --project=decision-atlas` to preserve the verified environment and runtime identity. The preparation script intentionally defaults to a private preview and zero trusted proxy hops, so re-running it is not the production update procedure. Retain the same Firestore collection, budget document and salt; do not reset them to deploy.
 
-Current reviewed release image: `us-central1-docker.pkg.dev/decision-atlas/decision-atlas/app@sha256:61350813c5d45deae7dd470b7a27568708eb8e4ae8aca0cf443ea42b93750e1f`.
+Current reviewed release image: `us-central1-docker.pkg.dev/decision-atlas/decision-atlas/app@sha256:16bc590caa561c396e1c009f6e15219b54999258ee5e962fb369ee5dd104b9be`.
+
+
+## Owner access, daily usage, and community storage
+
+The current release uses `DAILY_MODEL_BUDGET_USD=1` plus the existing `TOTAL_MODEL_BUDGET_USD=2`. Every inference/search reservation checks the UTC-day document and lifetime budget in a Firestore transaction. Failed calls retain reservations; settlements update the original reservation day. The daily reset is 00:00 UTC (05:30 India time). The site and public gallery remain online when new AI work is paused. These settings do not limit the GCP infrastructure bill.
+
+`ATLAS_OWNER_TOKEN` is supplied from Secret Manager secret `atlas-owner`, accessible only to the runtime identity. The owner signs in through the expandable Owner access section; the server sets a signed, HttpOnly, Secure, SameSite=Strict cookie with a 12-hour lifetime. It bypasses IP start/request allowances, but never spending reservations. The private local token and instructions are in ignored `work/owner-access.txt`; do not upload that file or put the token in a URL. Existing IP hashes and counters remain intact.
+
+Optional publication saves sanitized private snapshots in 500 bounded slots. Publication capabilities expire after 24 hours; expired slots are overwritten on reuse. Only explicit consent exposes a completed snapshot in Featured debates. Public copies contain generated prose and source metadata, not source passages, costs, keys, publication tokens, or voter hashes. Users must review their generated prose for private information. The gallery retains at most 200 posts (including hidden posts); a normalized salted-IP hash limits each network to one like per post. Ranking combines likes and recency, not evidence quality. The owner can hide a post to remove public access without permanently deleting its snapshot.
+
+Offline tests and a real Firestore SDK check validate the new quota/gallery transactions in an isolated collection; see `evaluation/community-cloud-checks.json`. No model calls are needed for these checks.
+
+The daily-cap rollout migrated 137 existing reservations for 2026-10-15 into that day’s accounting ($0.086111), marking their reservation day while preserving lifetime totals, IP salt, and start counters. The owner and daily-cap release passed 82 offline tests plus the isolated real Firestore checks.

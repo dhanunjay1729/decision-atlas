@@ -102,7 +102,8 @@ def estimate(request, sources):
     drafts=sum(2*(input_tokens*POOL[k][2]+output_tokens*POOL[k][3])/1e6 for k in keys)
     checks=(input_tokens*.13+count*400*.64)/1e6 if sources or request.include_web else 0
     report=(input_tokens*.1+850*.5)/1e6
-    expected=drafts+checks+report+(.0055 if request.include_web else 0)
+    quality=(input_tokens*.1+count*30*.5+input_tokens*.1+200*.5)/1e6
+    expected=drafts+checks+report+quality+(.0055 if request.include_web else 0)
     return {'estimated_usd':round(expected,5),'planning_upper_usd':round(expected*1.6,5),
             'target_average_usd':.02,'participants':count,'rounds':2,'argument_calls':count*2,
             'search_calls':int(request.include_web),'note':'Estimate only. Context, reasoning, corrections and provider failures can change charges. A persistent $2 project budget is enforced.'}

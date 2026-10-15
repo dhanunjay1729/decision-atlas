@@ -92,3 +92,14 @@ class ReportSections(BaseModel):
     revisions: str = Field(min_length=1,max_length=1200)
     gaps: str = Field(min_length=1,max_length=1200)
     priorities: str = Field(min_length=1,max_length=1200)
+
+class ClaimKind(BaseModel):
+    claim_id: str
+    kind: Literal['empirical', 'value']
+
+class ClaimKindsOutput(BaseModel):
+    classifications: list[ClaimKind] = Field(max_length=20)
+
+class ReportReviewOutput(BaseModel):
+    acceptable: bool
+    issues: list[Annotated[str, Field(min_length=1,max_length=1000)]] = Field(max_length=3)

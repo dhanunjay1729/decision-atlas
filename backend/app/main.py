@@ -4,7 +4,7 @@ import os
 from pathlib import Path
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from .budget import configured_ledger, LimitError
 from .engine import SYSTEM, debate
@@ -14,6 +14,9 @@ from .retrieval import retrieve
 from .gateway import GatewayProvider, estimate
 from .search import search
 from .http_limits import BodyLimitMiddleware,network_ip
+from .owner import is_owner, valid_token, session, COOKIE, TTL
+from .featured import create_store, FeaturedError
+from pydantic import BaseModel, Field
 
 app = FastAPI(title='Decision Atlas', version='0.1.0')
 app.add_middleware(BodyLimitMiddleware)
@@ -22,6 +25,7 @@ load_dotenv(ROOT / '.env', override=False)
 ledger = configured_ledger(ROOT)
 provider = GatewayProvider(ledger) if os.getenv('MODEL_PROVIDER')=='vercel' else ModelProvider(ledger)
 run_lock = asyncio.Semaphore(1)
+featured_store = create_store(ROOT, ledger)
 
 @app.get('/api/status')
 def status():
@@ -29,7 +33,9 @@ def status():
 
 @app.get('/api/allowance')
 def allowance(request:Request):
-    try:return ledger.allowance(network_ip(request))
+    try:
+        daily=ledger.daily_status()
+        return {**({'limit':None,'used':0,'remaining':None} if is_owner(request) else ledger.allowance(network_ip(request))), 'owner':is_owner(request), 'daily':daily}
     except LimitError as e:raise HTTPException(503,str(e)) from None
 
 def available(request: Request):
@@ -38,9 +44,11 @@ def available(request: Request):
     try:
         # Do not trust X-Forwarded-For. Configure the ASGI proxy allowlist for hosting.
         ip=network_ip(request)
-        if ledger.allowance(ip)['remaining']==0:
+        if not ledger.daily_status()['available']:
+            raise LimitError('Live debates are paused for today. Please return after the daily reset.')
+        if not is_owner(request) and ledger.allowance(ip)['remaining']==0:
             raise LimitError('This network has used its five-debate allowance. The saved sample remains available.')
-        ledger.request(ip)
+        if not is_owner(request):ledger.request(ip)
     except LimitError as e:
         raise HTTPException(429, str(e)) from e
 
@@ -73,7 +81,7 @@ async def analyze(payload: AnalyzeRequest, request: Request):
         async with run_lock:
             try:
                 if await request.is_disconnected(): return
-                ledger.start_debate(network_ip(request))
+                if not is_owner(request):ledger.start_debate(network_ip(request))
                 before=ledger.total()
                 selected=sources
                 if payload.include_web:
@@ -87,6 +95,8 @@ async def analyze(payload: AnalyzeRequest, request: Request):
                     if event['type'] == 'complete':
                         event['analysis']['model'] = configuration()['model']
                         event['analysis']['accounted_usd'] = round(ledger.total()-before,6)
+                        try:event['analysis']['publish_token'] = featured_store.save_completed(event['analysis'])
+                        except FeaturedError:pass  # Sharing availability must not discard a completed paid debate.
                     yield 'data: '+json.dumps(event)+'\n\n'
             except LimitError as e:
                 yield 'data: '+json.dumps({'type':'error','message':str(e)})+'\n\n'
@@ -114,6 +124,50 @@ def select_sources(question,sources):
 @app.post('/api/estimate')
 def estimate_cost(payload:AnalyzeRequest):
     return estimate(payload,select_sources(payload.question,payload.sources))
+
+class OwnerLogin(BaseModel):
+    token: str = Field(min_length=1,max_length=256)
+
+@app.post('/api/owner/login')
+def owner_login(payload:OwnerLogin,request:Request):
+    if not valid_token(payload.token):
+        try:ledger.request(network_ip(request))
+        except LimitError:raise HTTPException(429,'Too many login attempts. Try later.') from None
+        raise HTTPException(401,'Invalid owner access token.')
+    response=JSONResponse({'owner':True})
+    response.set_cookie(COOKIE,session(),max_age=TTL,httponly=True,secure=bool(os.getenv('K_SERVICE')),samesite='strict',path='/')
+    return response
+
+@app.post('/api/owner/logout')
+def owner_logout():
+    response=JSONResponse({'owner':False});response.delete_cookie(COOKIE,path='/');return response
+
+class Publication(BaseModel):
+    publish_token: str = Field(min_length=1,max_length=256)
+    consent: bool = False
+
+def featured_call(callback):
+    try:return callback()
+    except FeaturedError as e:raise HTTPException(getattr(e,'status_code',400),str(e)) from None
+
+@app.get('/api/featured')
+def featured_list():return featured_call(lambda:featured_store.list())
+
+@app.post('/api/featured')
+def featured_publish(payload:Publication):
+    return featured_call(lambda:featured_store.publish(payload.publish_token,consent=payload.consent))
+
+@app.get('/api/featured/{entry_id}')
+def featured_get(entry_id:str):return featured_call(lambda:featured_store.get(entry_id))
+
+@app.post('/api/featured/{entry_id}/like')
+def featured_like(entry_id:str,request:Request):
+    return featured_call(lambda:featured_store.vote(entry_id,network_ip(request)))
+
+@app.post('/api/featured/{entry_id}/hide')
+def featured_hide(entry_id:str,request:Request):
+    if not is_owner(request):raise HTTPException(403,'Owner access required.')
+    return featured_call(lambda:featured_store.hide(entry_id))
 
 @app.get('/api/_deployment/network')
 def deployment_network(request:Request):

@@ -33,6 +33,7 @@ import {
 import * as pdfjs from "pdfjs-dist";
 import pdfWorker from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 import { sample } from "./sample";
+import {FeaturedDebates, OwnerAccess, PublishDebate, type Allowance} from "./community";
 import type { Analysis, Claim, Source } from "./types";
 import "@xyflow/react/dist/style.css";
 import "./style.css";
@@ -64,28 +65,15 @@ function App() {
   const [error, setError] = useState("");
   const [suggestion, setSuggestion] = useState("");
   const [ready, setReady] = useState(false);
-  const [provider, setProvider] = useState("Not connected");
   const [rolesConfirmed, setRolesConfirmed] = useState(false);
   const [notice, setNotice] = useState("");
-  const [cost, setCost] = useState<{estimated_usd:number;planning_upper_usd:number;note:string}|null>(null);
-  const [reviewed, setReviewed] = useState(false);
-  const [allowance, setAllowance] = useState<{limit:number;used:number;remaining:number}|null>(null);
+  const [allowance, setAllowance] = useState<Allowance|null>(null);
+  const [page,setPage] = useState<'studio'|'featured'>('studio');
+  const [featuredVersion,setFeaturedVersion] = useState(0);
   function refreshAllowance() {fetch("/api/allowance").then(r=>r.ok?r.json():null).then(a=>{if(a)setAllowance(a);}).catch(()=>{});}
-  useEffect(()=>{refreshAllowance();},[]);
-  useEffect(() => {setCost(null);setReviewed(false);}, [question, roles, sources, pasted, web]);
+  useEffect(()=>{refreshAllowance();const timer=setInterval(refreshAllowance,60000);return()=>clearInterval(timer);},[]);
   const validRoles = roles.every(r => r.trim()) && new Set(roles.map(r=>r.trim().toLowerCase())).size === roles.length;
-  async function reviewCost() {
-    setError("");setBusy(true);setProgress("Estimating cost");
-    const controller=new AbortController();abort.current=controller;const id=++runId.current;
-    try {
-      const response=await fetch("/api/estimate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({question,perspectives:roles,sources:textSources,include_web:web}),signal:controller.signal});
-      const data=await response.json();
-      if(!response.ok) throw Error(typeof data.detail==="string"?data.detail:"Review your question and choose distinct perspectives.");
-      if(id!==runId.current)return;
-      setCost(data);setReviewed(true);setNotice("Review the cost and your roles, then click Start debate.");
-    } catch(e) {if(id===runId.current)setError(e instanceof Error?e.message:"Could not estimate cost.");}
-    finally {if(id===runId.current){setBusy(false);setProgress("");}}
-  }
+  const dailyPaused=allowance?.daily?.available===false;
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
   const abort = useRef<AbortController | null>(null);
   const runId = useRef(0);
@@ -95,7 +83,6 @@ function App() {
       .then((s) => {
         if (s) {
           setReady(s.configured);
-          setProvider(s.configured ? s.model : "Not connected");
         }
       })
       .catch(() => {});
@@ -112,6 +99,7 @@ function App() {
     setProgress("Stopped");
   }
   function loadSample() {
+    setPage("studio");
     stop();
     setError("");
     setNotice("");
@@ -448,12 +436,13 @@ function App() {
           </span>
         </a>
         <div className="nav-label">WORKSPACE</div>
-        <button className="nav-item active" onClick={() => setTab("debate")}>
+        <button className={"nav-item "+(page==="studio"?"active":"")} onClick={() => {setPage("studio");setTab("debate");}}>
           <MessageSquare size={18} /> Debate studio <span className="nav-dot" />
         </button>
         <button className="nav-item" onClick={loadSample} disabled={reading}>
           <BookOpen size={18} /> Explore a sample <ArrowUpRight size={14} />
         </button>
+        <button className={"nav-item "+(page==="featured"?"active":"")} onClick={()=>setPage("featured")}><Globe size={18}/> Featured debates</button>
         <div className="sidebar-note">
           <GitBranch size={24} />
           <h3>
@@ -478,14 +467,16 @@ function App() {
       <div className="workspace">
         <header className="topbar">
           <div>
-            Workspace <ChevronRight size={14} /> <strong>Debate studio</strong>
+            Workspace <ChevronRight size={14} /> <strong>{page==="featured"?"Featured debates":"Debate studio"}</strong>
           </div>
           <span className="connection">
             <span className={ready ? "status-dot online" : "status-dot"} />
-            {ready ? provider : "Model connection pending"}
+            {ready ? "Live models connected" : "Model connection pending"}
           </span>
         </header>
         <main>
+          {page === 'featured' ? <FeaturedDebates owner={!!allowance?.owner} refresh={featuredVersion} onOpen={a=>{stop();setAnalysis(a);setVisible(a.arguments.length);setSelected(null);setTab("debate");setProgress("Published debate");setPage("studio");}}/> : <>
+          {dailyPaused && <div className="service-pause" role="status">Live debates are paused for today. The sample and Featured debates are still available. New debates resume after {new Date(allowance!.daily!.resets_at).toLocaleString()}.</div>}
           <div className="page-heading">
             <div>
               <div className="eyebrow">MULTI-PERSPECTIVE DECISION SUPPORT</div>
@@ -663,7 +654,7 @@ function App() {
                   {[2, 3, 4, 5].map(count => <option key={count} value={count}>{count}</option>)}
                 </select>
               </label>
-              <button className="secondary-button" disabled={busy || reading || !ready || allowance?.remaining === 0 || question.trim().length < 5} onClick={() => void prepare()}><Sparkles size={15} /> Generate {roles.length} perspectives with AI</button>
+              <button className="secondary-button" disabled={busy || reading || !ready || allowance?.remaining === 0 || dailyPaused || question.trim().length < 5} onClick={() => void prepare()}><Sparkles size={15} /> Generate {roles.length} perspectives with AI</button>
               <p className="helper">
                 {rolesConfirmed
                   ? "Suggested for your question. Edit before starting."
@@ -698,8 +689,7 @@ function App() {
                   Arguments <ArrowRight size={12} /> Revisions
                 </span>
               </div>
-              {allowance && <p className="allowance-note">{allowance.remaining} of {allowance.limit} debate starts remaining for this network. Suggestions do not use a debate. Starts are counted even if a paid run later fails.</p>}
-              {cost && <div className="cost-estimate"><strong>Estimated ${cost.estimated_usd.toFixed(4)}</strong><p>Planning range: ${cost.estimated_usd.toFixed(4)}–${cost.planning_upper_usd.toFixed(4)} · {roles.length*2} arguments · {web?"1 shared search":"No web search"}</p><small>Target: $0.02 per debate on average. Estimates vary; the shared project budget is $2.</small></div>}
+              {allowance && <p className="allowance-note">{allowance.owner ? "Owner access · no personal debate limit" : `${allowance.remaining} of ${allowance.limit} debate starts remaining for this network. Suggestions do not use a debate. Starts are counted even if a run fails.`}</p>}
               {error && (
                 <div className="error" role="alert">
                   {error}
@@ -713,17 +703,17 @@ function App() {
                   reading ||
                   !question.trim() ||
                   !ready ||
-                  allowance?.remaining === 0 ||
+                  allowance?.remaining === 0 || dailyPaused ||
                   !validRoles
                 }
-                onClick={() => void (reviewed ? runLive() : reviewCost())}
+                onClick={() => void runLive()}
               >
                 {busy ? (
                   <LoaderCircle size={17} className="spin" />
                 ) : (
                   <Sparkles size={17} />
                 )}{" "}
-                {reviewed ? "Start debate" : "Review cost & start"}{" "}
+                {dailyPaused ? "Debates paused today" : "Start debate"}{" "}
                 <ArrowRight size={16} />
               </button>
               <p className="helper">{web ? "Shared web evidence will be retrieved for all debaters." : "Uses model knowledge and any documents you add. Unsourced facts remain unverified."}</p>
@@ -748,7 +738,7 @@ function App() {
                   <h2>Follow the reasoning</h2>
                 </div>
                 <span className="tiny-label">
-                  {analysis?.mode === "sample"
+                  {analysis?.published ? "COMMUNITY DEBATE" : analysis?.mode === "sample"
                     ? "ILLUSTRATIVE SAMPLE"
                     : analysis
                       ? "LIVE ANALYSIS"
@@ -839,7 +829,7 @@ function App() {
                           : "live-badge"
                       }
                     >
-                      {analysis.mode === "sample"
+                      {analysis.published ? "Community debate" : analysis.mode === "sample"
                         ? "Sample replay"
                         : "Live run"}
                     </span>
@@ -879,6 +869,8 @@ function App() {
                       </button>
                     )}
                   </div>
+                  {analysis.published && <p className="sample-disclaimer">Community-shared debate. Original source passages are private; public source titles and links are shown where available.</p>}
+                  {!busy && analysis.publish_token && <PublishDebate key={analysis.publish_token} token={analysis.publish_token} onPublished={()=>setFeaturedVersion(v=>v+1)}/>}
                   {tab === "debate" && (
                     <div className="debate-content">
                       {[1, 2].map((round) => (
@@ -1049,7 +1041,6 @@ function App() {
                               : "Model-generated analysis"}{" "}
                             · Decision support ·{" "}
                             {analysis.report.split(/\s+/).length} words
-                            {analysis.accounted_usd !== undefined && ` · Tracked cost $${analysis.accounted_usd.toFixed(4)}`}
                           </div>
                         </>
                       )}
@@ -1073,7 +1064,7 @@ function App() {
                             </strong>
                             <span>{s.id}</span>
                           </div>
-                          <p>{s.text}</p>
+                          <p>{s.text || "Source passage withheld from the public copy."}</p>
                           {s.url && /^https?:\/\//.test(s.url) && (
                             <a href={s.url} target="_blank" rel="noreferrer">
                               Open original source <ArrowUpRight size={13} />
@@ -1087,6 +1078,8 @@ function App() {
               )}
             </section>
           </div>
+          </>}
+          <OwnerAccess owner={!!allowance?.owner} onChange={refreshAllowance}/>
           <footer className="page-footer">
             <span>
               <ShieldCheck size={14} /> Evidence supports claims. It does not
@@ -1154,7 +1147,7 @@ function App() {
                       {s.title}
                       {s.page ? ` · page ${s.page}` : ""}
                     </strong>
-                    <p>{s.text}</p>
+                    <p>{s.text || "Source passage withheld from the public copy."}</p>
                     {s.url && /^https?:\/\//.test(s.url) && (
                       <a href={s.url} target="_blank" rel="noreferrer">
                         View source <ArrowUpRight size={13} />

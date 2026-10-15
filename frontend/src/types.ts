@@ -36,6 +36,8 @@ export interface Analysis {
   mode: "sample" | "live";
   model?: string;
   accounted_usd?: number;
+  publish_token?: string;
+  published?: boolean;
   evidence_mode?: "web" | "documents" | "knowledge";
 }
 export interface Setup {

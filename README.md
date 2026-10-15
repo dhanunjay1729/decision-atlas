@@ -44,7 +44,7 @@ flowchart TD
 - **Transparent verification:** view supported, contradicted, insufficient-evidence, value-judgment, unverified, and requires-review labels with explanations. Verifier disagreements remain visible.
 - **Interactive argument graph:** trace questions, claims, sources, and challenges through connected nodes.
 - **Balanced reports:** read or export a 300–500 word brief that preserves disagreements and uncertainty rather than choosing a winner.
-- **Personal accounts:** email/password signup, login, password reset, and private **My debates** history for completed signed-in runs.
+- **Personal accounts:** Google sign-in or email/password signup, login, password reset, and private **My debates** history for completed signed-in runs.
 - **Consent-based sharing:** publish a completed debate to **Featured debates** only when you choose to. Trending order combines community likes and recency.
 - **Desktop and mobile:** a responsive workspace, with navigation to the studio, featured collection, account, and private history.
 
@@ -103,7 +103,7 @@ The report summarizes evidence, priorities, challenges, revisions, and remaining
 
 ## Accounts, history, and sharing
 
-Sign in **before starting a debate** to save its completed result in My debates. Accounts use Google-managed email/password authentication; the application receives identity tokens and does not receive or store account passwords. Password reset and sign-out are included.
+**Accounts are optional. Anyone can start a debate as a guest.** When signed in, completed debates are saved automatically in My debates. Accounts use Google sign-in or Google-managed email/password authentication; the application receives identity tokens and does not receive or store account passwords. Password reset and sign-out are included.
 
 Saved debates stay private. Public sharing is a separate, explicit choice after reviewing the generated text. Featured copies exclude raw source passages and internal accounting, but generated arguments may still contain details from user inputs. Community popularity is not evidence quality or expert endorsement.
 

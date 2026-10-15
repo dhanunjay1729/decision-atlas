@@ -19,8 +19,9 @@ The server pins the inexpensive models and providers in `backend/app/gateway.py`
 - Perspective suggestions: Qwen 3.7 Flash via Alibaba.
 - Web-off drafts: Qwen 3.8 27B via RunInfra. On temporary capacity/rate-limit failures, one bounded fallback uses Haiku 5.5 via Anthropic; RunInfra is cooled down for two minutes. Actual draft models are displayed.
 - Web-on drafts: two or more Qwen 3.7 Flash perspectives with one Haiku perspective, depending on the user-selected 2–5 participant count.
+- Claim classification: a separate Haiku call distinguishes testable outcomes from pure value priorities.
 - Source-backed verification: Haiku plus GPT-OSS 20B via DeepInfra.
-- Report writing: Haiku, with bounded length correction and a six-section fallback.
+- Report writing: Haiku, with bounded length correction and a six-section fallback. A separate Haiku review checks neutrality and factual language, with one bounded content correction. A narrow phrase guard covers observed recommendation leaks; neither check guarantees perfect neutrality.
 
 No arbitrary or expensive model/provider fallbacks are enabled. All participants in a round see the same fixed previous-round snapshot. Statements, documents, roles and previous arguments are treated as untrusted content rather than instructions.
 
@@ -52,7 +53,7 @@ Use server environment variables or a mode-600, ignored `.env`. Never put creden
 
 There are no recurring purchases or automatic credit top-ups. Provider-side pricing changes require reviewing the fixed rate assumptions. Conservative reservations are application safeguards, not a provider billing guarantee.
 
-Use a persistent volume for `LEDGER_PATH`. Runs are serialized within one Python process; multiple workers/replicas require shared concurrency control. Preparation and analysis each count toward rate limits. Public deployment should enforce request-body limits and configure trusted proxy IPs. A no-login public demo needs controlled access and monitoring before enabling paid traffic.
+Use a persistent volume for `LEDGER_PATH`. Runs are serialized within one Python process; multiple workers/replicas require shared concurrency control. Preparation and analysis each count toward rate limits. API POST bodies are limited to 256 KB. Public deployment must configure and verify trusted proxy IPs. A no-login public demo needs controlled access and monitoring before enabling paid traffic.
 
 Each network IP receives five lifetime debate starts (`MAX_DEBATES_PER_IP=5`). A start consumes a use even if a model later fails; suggestions and cost previews do not consume this allowance. The counter is checked atomically before paid debate work and survives restarts. Only salted IP hashes are recorded for new counters. Shared Wi-Fi shares the allowance, and changing networks can bypass it; this is a demo safeguard, not user identity or hardware tracking. Configure the ASGI trusted-proxy allowlist correctly when hosting, and retain the SQLite volume.
 
@@ -77,8 +78,11 @@ npm run build
 
 Tests cover 2–5 participants, equal round snapshots, source-free unverified labels, forged client sources, persistent spending limits, provider pinning, bounded cheap fallback, verification disagreement, single shared search, bounded verification batches, atomic five-start IP allowances and document/web coexistence. The hand-authored attendance sample uses fictional passages; its labels are illustrative.
 
-Live checks of the connected gateway are functional checks, not accuracy benchmarks. A real web run completed with six arguments, four source excerpts and a 425-word report, with tracked cost about $0.00953. A five-debater document run completed with ten arguments and a 358-word report at $0.01156 tracked cost, including the bounded Haiku fallback. A source-free check exposed a RunInfra quota failure and motivated the bounded Haiku fallback. Five-topic model simulations informed the pool; general accuracy, third-round benefit and improvement over a single-agent baseline are not claimed. The human claim/evidence review and deployment remain separate review steps.
+Live checks of the connected gateway are functional checks, not accuracy benchmarks. A real web run completed with six arguments, four source excerpts and a 425-word report, with tracked cost about $0.00953. A five-debater document run completed with ten arguments and a 358-word report at $0.01156 tracked cost, including the bounded Haiku fallback. A source-free check exposed a RunInfra quota failure and motivated the bounded Haiku fallback. Five-topic model simulations informed the pool; general accuracy, third-round benefit and improvement over a single-agent baseline are not claimed. The newer [quality review](docs/quality-review.md) records both successes and failures, including failures introduced by stricter report review. Deployment remains pending cloud setup and live validation.
 
 ## Deployment
+
+The agreed target is **Google Cloud Run + Firestore**. See [the deployment guide](docs/google-cloud.md) for the user setup, private deployment command and validation gates. The Firestore adapter has offline transactional behavior tests; live SDK validation remains required. Cloud Run refuses the local SQLite backend so updates cannot silently reset cost controls. No public service has been deployed.
+
 
 A Dockerfile is included (the image build has not yet been verified) for a single-process Python + Node deployment. Mount persistent storage at `/app/work`, supply `AI_GATEWAY_API_KEY` securely, and set `LEDGER_PATH=/app/work/usage.sqlite3`. The image never copies local credentials or research artifacts. Publication should follow review of live outputs; the current deliverable is the local app and GitHub source.

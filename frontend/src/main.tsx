@@ -241,7 +241,7 @@ function App() {
         signal: controller.signal,
       });
       const data = await r.json();
-      if (!r.ok) throw Error(data.detail || "Could not prepare the debate.");
+      if (!r.ok) throw Error(typeof data.detail === "string" ? data.detail : "Enter a complete question and choose 2–5 distinct perspectives.");
       if (id !== runId.current) return;
       setRoles(data.perspectives);
       setSuggestion(data.suggested_question || "");

@@ -1,0 +1,12 @@
+.git
+.gitignore
+.gcloudignore
+.env
+.env.*
+node_modules/
+dist/
+.venv/
+work/
+__pycache__/
+.pytest_cache/
+*.sqlite3

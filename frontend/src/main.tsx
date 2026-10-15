@@ -478,7 +478,7 @@ function App() {
         <div className="sidebar-bottom">
           <div className="avatar">DA</div>
           <div>
-            Portfolio edition<small>Model-independent prototype</small>
+            Explore the trade-offs<small>2–5 perspectives · 2 rounds</small>
           </div>
         </div>
       </aside>
@@ -502,7 +502,7 @@ function App() {
               </p>
             </div>
             <span className="edition">
-              <Sparkles size={15} /> Early build
+              <Sparkles size={15} /> {ready ? "Live workspace" : "Debate workspace"}
             </span>
           </div>
           <div className="studio-grid">

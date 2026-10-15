@@ -67,7 +67,7 @@ Official guides: [Deploy containers](https://docs.cloud.google.com/run/docs/depl
 
 For routine image updates, use `gcloud run services update decision-atlas --image=REVIEWED_DIGEST --region=us-central1 --project=decision-atlas` to preserve the verified environment and runtime identity. The preparation script intentionally defaults to a private preview and zero trusted proxy hops, so re-running it is not the production update procedure. Retain the same Firestore collection, budget document and salt; do not reset them to deploy.
 
-Current reviewed release image: `us-central1-docker.pkg.dev/decision-atlas/decision-atlas/app@sha256:f3ecca815c9dabaac41ee125193a86ed435861869df393bd2f4c57e703c245e1`.
+Current reviewed release image: `us-central1-docker.pkg.dev/decision-atlas/decision-atlas/app@sha256:b110f4de41945901a6996987e88bbff089c4c1e6ed299d8167cd0b75c48a5f2c`.
 
 
 ## Owner access, daily usage, and community storage
@@ -94,3 +94,5 @@ The release passed 115 offline tests and a real managed-auth/Firestore check in 
 
 
 Google sign-in requires enabling the Google provider in Firebase Authentication and configuring its web OAuth client. `FIREBASE_GOOGLE_ENABLED=true` exposes the Google button once that setup is complete. Support email and OAuth client setup are handled through the project’s authenticated Firebase console. The former `atlas-owner` secret is no longer used by the application.
+
+Google provider setup is enabled and its web client is configured. Release `decision-atlas-00007-6sp` serves the Google-owner/account-history image above. The public login page was checked for the Google button, optional guest use, and removal of the former owner form.

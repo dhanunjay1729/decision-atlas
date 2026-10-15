@@ -4,7 +4,7 @@ The client and transaction runner are injectable for offline behavior tests.
 Actual SDK transaction integration must also be checked against Firestore before publishing.
 """
 import hashlib,ipaddress,os,re,secrets,time,uuid
-from .budget import LimitError
+from .budget import LimitError,utc_budget_day
 
 class FirestoreLedger:
     def __init__(self,client=None,runner=None,collection="decision_atlas"):
@@ -45,28 +45,48 @@ class FirestoreLedger:
         return hashlib.sha256((self.salt+ip).encode()).hexdigest()
 
     def reserve(self,maximum_cost):
+        if maximum_cost < 0:raise ValueError('Reservation must not be negative.')
+        now=time.time();day,_,_,_=utc_budget_day(now)
+        daily_ref=self.collection.document('daily_'+day)
         key=uuid.uuid4().hex
         reservation=self.collection.document('reservation_'+key)
         def write(tx):
             state=self._read(self.state,tx)
+            daily=self._read(daily_ref,tx).get('total',0.0)
             total=state['total']+maximum_cost
             if total>float(os.getenv('TOTAL_MODEL_BUDGET_USD','2')):
                 raise LimitError('The demo model budget has been reached. The saved sample is still available.')
+            if daily+maximum_cost>float(os.getenv('DAILY_MODEL_BUDGET_USD','1')):
+                raise LimitError('Today’s debate allowance has been reached. Live debates resume at 00:00 UTC; featured debates remain available.')
             tx.update(self.state,{'total':total})
-            tx.set(reservation,{'amount':maximum_cost,'created':time.time()})
+            tx.set(daily_ref,{'total':daily+maximum_cost})
+            tx.set(reservation,{'amount':maximum_cost,'created':now,'day':day})
             return key
         return self._run(write)
 
     def settle(self,reservation,actual_cost):
+        if actual_cost < 0:raise ValueError('Actual cost must not be negative.')
         ref=self.collection.document('reservation_'+reservation)
         def write(tx):
             state=self._read(self.state,tx);entry=self._read(ref,tx)
             reserved=entry['amount']
+            day=entry.get('day') or utc_budget_day(entry['created'])[0]
+            daily_ref=self.collection.document('daily_'+day)
+            daily=self._read(daily_ref,tx)
             tx.update(self.state,{'total':state['total']-reserved+actual_cost})
-            tx.update(ref,{'amount':actual_cost})
+            # Old reservations were never added to daily totals; add their actual charge once.
+            difference=actual_cost-reserved if entry.get('day') else actual_cost
+            tx.set(daily_ref,{'total':daily.get('total',0.0)+difference})
+            tx.update(ref,{'amount':actual_cost,'day':day})
             return actual_cost>reserved+1e-9
         exceeded=self._run(write)
         if exceeded:raise LimitError('Provider usage exceeded the configured estimate; stop and review model pricing.')
+
+    def daily_status(self):
+        day,_,_,resets_at=utc_budget_day()
+        ref=self.collection.document('daily_'+day)
+        spent=self._run(lambda tx:self._read(ref,tx).get('total',0.0))
+        return {'available':spent<float(os.getenv('DAILY_MODEL_BUDGET_USD','1')),'resets_at':resets_at}
 
     def total(self):
         return self._run(lambda tx:self._read(self.state,tx)['total'])

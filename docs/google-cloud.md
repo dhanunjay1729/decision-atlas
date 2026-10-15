@@ -67,7 +67,7 @@ Official guides: [Deploy containers](https://docs.cloud.google.com/run/docs/depl
 
 For routine image updates, use `gcloud run services update decision-atlas --image=REVIEWED_DIGEST --region=us-central1 --project=decision-atlas` to preserve the verified environment and runtime identity. The preparation script intentionally defaults to a private preview and zero trusted proxy hops, so re-running it is not the production update procedure. Retain the same Firestore collection, budget document and salt; do not reset them to deploy.
 
-Current reviewed release image: `us-central1-docker.pkg.dev/decision-atlas/decision-atlas/app@sha256:16bc590caa561c396e1c009f6e15219b54999258ee5e962fb369ee5dd104b9be`.
+Current reviewed release image: `us-central1-docker.pkg.dev/decision-atlas/decision-atlas/app@sha256:f3ecca815c9dabaac41ee125193a86ed435861869df393bd2f4c57e703c245e1`.
 
 
 ## Owner access, daily usage, and community storage
@@ -81,3 +81,13 @@ Optional publication saves sanitized private snapshots in 500 bounded slots. Pub
 Offline tests and a real Firestore SDK check validate the new quota/gallery transactions in an isolated collection; see `evaluation/community-cloud-checks.json`. No model calls are needed for these checks.
 
 The daily-cap rollout migrated 137 existing reservations for 2026-10-15 into that day’s accounting ($0.086111), marking their reservation day while preserving lifetime totals, IP salt, and start counters. The owner and daily-cap release passed 82 offline tests plus the isolated real Firestore checks.
+
+## Managed accounts and private history
+
+Email/password signup and login use Google Identity Platform (Firebase Authentication). The deployed configuration enables email-enumeration protection, authorizes the Cloud Run domain, and enforces an eight-character minimum password. Public client configuration is provided through `/api/auth/config` using `FIREBASE_PROJECT_ID`, `FIREBASE_WEB_API_KEY`, and `FIREBASE_AUTH_DOMAIN`. This client key identifies the authentication project; it is not the AI Gateway credential.
+
+The runtime identity has `roles/firebaseauth.viewer` for Firebase Admin token revocation/disabled-account checks. The browser sends ID tokens, not passwords, to FastAPI. History routes derive ownership from verified token claims and never accept a browser-supplied user ID. Firestore account-history documents are accessed through the server identity; the frontend does not directly access Firestore.
+
+Signed-in completed runs are saved privately with selected source passages and claim assessments. The store uses a separate namespace, salted account identifiers, and bounded allocations of 100 retained snapshots per account and 1,000 globally. Hidden snapshots remain private and count toward retention limits. A history save failure is reported alongside the completed result rather than discarding paid work. Guest runs are not attached retroactively.
+
+The release passed 97 offline tests and a real managed-auth/Firestore check in an isolated collection (`evaluation/accounts-cloud-checks.json`). Signup and password login were verified with disposable synthetic accounts, without model calls. Signup does not bypass visitor usage limits; owner access remains separate.

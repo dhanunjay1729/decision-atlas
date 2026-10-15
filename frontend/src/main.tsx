@@ -33,6 +33,7 @@ import {
 import * as pdfjs from "pdfjs-dist";
 import pdfWorker from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 import { sample } from "./sample";
+import {Accounts, MyDebates, useAccount} from "./accounts";
 import {FeaturedDebates, OwnerAccess, PublishDebate, type Allowance} from "./community";
 import type { Analysis, Claim, Source } from "./types";
 import "@xyflow/react/dist/style.css";
@@ -49,6 +50,9 @@ const labels = {
 const initials = ["01", "02", "03", "04", "05"];
 type Tab = "debate" | "graph" | "report" | "sources";
 function App() {
+  const account=useAccount();
+  const [historyVersion,setHistoryVersion]=useState(0);
+  const previousAccount=useRef<string|null>(null);
   const [question, setQuestion] = useState("");
   const [roles, setRoles] = useState<string[]>(["", "", ""]);
   const [sources, setSources] = useState<Source[]>([]);
@@ -68,7 +72,7 @@ function App() {
   const [rolesConfirmed, setRolesConfirmed] = useState(false);
   const [notice, setNotice] = useState("");
   const [allowance, setAllowance] = useState<Allowance|null>(null);
-  const [page,setPage] = useState<'studio'|'featured'>('studio');
+  const [page,setPage] = useState<'studio'|'featured'|'account'|'history'>('studio');
   const [featuredVersion,setFeaturedVersion] = useState(0);
   function refreshAllowance() {fetch("/api/allowance").then(r=>r.ok?r.json():null).then(a=>{if(a)setAllowance(a);}).catch(()=>{});}
   useEffect(()=>{refreshAllowance();const timer=setInterval(refreshAllowance,60000);return()=>clearInterval(timer);},[]);
@@ -262,9 +266,11 @@ function App() {
       mode: "live",
     });
     try {
+      const token=await account.getToken();
+      if(id!==runId.current)return;
       const r = await fetch("/api/analyze", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...(token?{Authorization:"Bearer "+token}:{}) },
         body: JSON.stringify({
           question,
           perspectives: roles,
@@ -303,7 +309,9 @@ function App() {
           if (event.type === "complete") {
             setAnalysis(event.analysis);
             setVisible(event.analysis.arguments.length);
-            setProgress("Analysis complete");
+            setProgress(event.analysis.history_saved ? "Analysis complete · saved privately" : "Analysis complete");
+            if(event.analysis.history_saved)setHistoryVersion(value=>value+1);
+            if(event.analysis.history_notice)setNotice(event.analysis.history_notice);
           }
         }
       }
@@ -326,6 +334,14 @@ function App() {
     a.click();
     URL.revokeObjectURL(url);
   }
+  useEffect(()=>{
+    const uid=account.user?.uid??null;
+    if(previousAccount.current===uid)return;
+    const hadPrivateAccount=!!previousAccount.current;
+    previousAccount.current=uid;
+    stop();setAnalysis(null);setSelected(null);setVisible(0);setNotice("");setError("");
+    if(hadPrivateAccount){setQuestion("");setRoles(current=>current.map(()=>""));setSources([]);setPasted("");setSuggestion("");setRolesConfirmed(false);}
+  },[account.user?.uid]);
   const samplePlaying = analysis?.mode === "sample" && busy;
   const graphNodes: Node[] = analysis
     ? [
@@ -443,6 +459,8 @@ function App() {
           <BookOpen size={18} /> Explore a sample <ArrowUpRight size={14} />
         </button>
         <button className={"nav-item "+(page==="featured"?"active":"")} onClick={()=>setPage("featured")}><Globe size={18}/> Featured debates</button>
+        <button className={"nav-item "+(page==="history"?"active":"")} onClick={()=>setPage("history")}><FileText size={18}/> My debates</button>
+        <button className={"nav-item "+(page==="account"?"active":"")} onClick={()=>setPage("account")}><ShieldCheck size={18}/> {account.user ? "My account" : "Sign in / Sign up"}</button>
         <div className="sidebar-note">
           <GitBranch size={24} />
           <h3>
@@ -467,15 +485,21 @@ function App() {
       <div className="workspace">
         <header className="topbar">
           <div>
-            Workspace <ChevronRight size={14} /> <strong>{page==="featured"?"Featured debates":"Debate studio"}</strong>
+            Workspace <ChevronRight size={14} /> <strong>{page==="featured"?"Featured debates":page==="history"?"My debates":page==="account"?"My account":"Debate studio"}</strong>
           </div>
           <span className="connection">
             <span className={ready ? "status-dot online" : "status-dot"} />
             {ready ? "Live models connected" : "Model connection pending"}
           </span>
         </header>
+        <nav className="mobile-nav" aria-label="Workspace navigation">
+          <button aria-current={page==='studio'?'page':undefined} onClick={()=>setPage('studio')}>Studio</button>
+          <button aria-current={page==='featured'?'page':undefined} onClick={()=>setPage('featured')}>Featured</button>
+          <button aria-current={page==='history'?'page':undefined} onClick={()=>setPage('history')}>My debates</button>
+          <button aria-current={page==='account'?'page':undefined} onClick={()=>setPage('account')}>{account.user?'Account':'Sign in / Sign up'}</button>
+        </nav>
         <main>
-          {page === 'featured' ? <FeaturedDebates owner={!!allowance?.owner} refresh={featuredVersion} onOpen={a=>{stop();setAnalysis(a);setVisible(a.arguments.length);setSelected(null);setTab("debate");setProgress("Published debate");setPage("studio");}}/> : <>
+          {page === 'account' ? <Accounts account={account}/> : page === 'history' ? <><MyDebates getToken={account.getToken} version={historyVersion} onOpen={a=>{stop();setAnalysis(a);setVisible(a.arguments.length);setSelected(null);setTab('debate');setProgress('Saved private debate');setPage('studio');}}/>{!account.user&&<button className='secondary-button' onClick={()=>setPage('account')}>Sign in / Sign up</button>}</> : page === 'featured' ? <FeaturedDebates owner={!!allowance?.owner} refresh={featuredVersion} onOpen={a=>{stop();setAnalysis(a);setVisible(a.arguments.length);setSelected(null);setTab("debate");setProgress("Published debate");setPage("studio");}}/> : <>
           {dailyPaused && <div className="service-pause" role="status">Live debates are paused for today. The sample and Featured debates are still available. New debates resume after {new Date(allowance!.daily!.resets_at).toLocaleString()}.</div>}
           <div className="page-heading">
             <div>
@@ -704,7 +728,7 @@ function App() {
                   !question.trim() ||
                   !ready ||
                   allowance?.remaining === 0 || dailyPaused ||
-                  !validRoles
+                  !validRoles || account.loading
                 }
                 onClick={() => void runLive()}
               >
@@ -716,6 +740,7 @@ function App() {
                 {dailyPaused ? "Debates paused today" : "Start debate"}{" "}
                 <ArrowRight size={16} />
               </button>
+              <p className="helper">{account.user ? "Completed debates are saved privately to My debates." : "Sign in before starting to save this debate to your private history."}</p>
               <p className="helper">{web ? "Shared web evidence will be retrieved for all debaters." : "Uses model knowledge and any documents you add. Unsourced facts remain unverified."}</p>
               {!ready && (
                 <p className="pending-note">

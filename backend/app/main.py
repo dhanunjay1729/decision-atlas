@@ -17,6 +17,8 @@ from .http_limits import BodyLimitMiddleware,network_ip
 from .owner import is_owner, valid_token, session, COOKIE, TTL
 from .featured import create_store, FeaturedError
 from pydantic import BaseModel, Field
+from .accounts import auth_config, user_id
+from .history import create_history, HistoryError
 
 app = FastAPI(title='Decision Atlas', version='0.1.0')
 app.add_middleware(BodyLimitMiddleware)
@@ -26,6 +28,7 @@ ledger = configured_ledger(ROOT)
 provider = GatewayProvider(ledger) if os.getenv('MODEL_PROVIDER')=='vercel' else ModelProvider(ledger)
 run_lock = asyncio.Semaphore(1)
 featured_store = create_store(ROOT, ledger)
+history_store = create_history(ROOT, ledger)
 
 @app.get('/api/status')
 def status():
@@ -75,6 +78,7 @@ async def prepare(payload: PrepareRequest, request: Request):
 async def analyze(payload: AnalyzeRequest, request: Request):
     if payload.include_web and not configuration()['web_available']:
         raise HTTPException(503,'Web search is not configured. Turn it off or configure AI Gateway.')
+    uid=user_id(request)
     sources = select_sources(payload.question,payload.sources)
     available(request)
     async def events():
@@ -97,6 +101,13 @@ async def analyze(payload: AnalyzeRequest, request: Request):
                         event['analysis']['accounted_usd'] = round(ledger.total()-before,6)
                         try:event['analysis']['publish_token'] = featured_store.save_completed(event['analysis'])
                         except FeaturedError:pass  # Sharing availability must not discard a completed paid debate.
+                        if uid:
+                            try:
+                                event['analysis']['history_id']=history_store.save_completed(uid,event['analysis'])
+                                event['analysis']['history_saved']=True
+                            except HistoryError as error:
+                                event['analysis']['history_saved']=False
+                                event['analysis']['history_notice']=str(error)
                     yield 'data: '+json.dumps(event)+'\n\n'
             except LimitError as e:
                 yield 'data: '+json.dumps({'type':'error','message':str(e)})+'\n\n'
@@ -124,6 +135,28 @@ def select_sources(question,sources):
 @app.post('/api/estimate')
 def estimate_cost(payload:AnalyzeRequest):
     return estimate(payload,select_sources(payload.question,payload.sources))
+
+@app.get('/api/auth/config')
+def public_auth_config():return auth_config()
+
+def history_call(callback):
+    try:return callback()
+    except HistoryError as error:raise HTTPException(error.status_code,str(error)) from None
+
+@app.get('/api/history')
+def history_list(request:Request):
+    uid=user_id(request,required=True)
+    return history_call(lambda:history_store.list(uid))
+
+@app.get('/api/history/{entry_id}')
+def history_get(entry_id:str,request:Request):
+    uid=user_id(request,required=True)
+    return history_call(lambda:history_store.get(uid,entry_id))
+
+@app.post('/api/history/{entry_id}/hide')
+def history_hide(entry_id:str,request:Request):
+    uid=user_id(request,required=True)
+    return history_call(lambda:history_store.hide(uid,entry_id))
 
 class OwnerLogin(BaseModel):
     token: str = Field(min_length=1,max_length=256)

@@ -1,0 +1,10 @@
+{
+  "managed_signed_token_verified": true,
+  "forged_token_rejected": true,
+  "real_firestore_private_history": true,
+  "private_source_passages_retained": true,
+  "cross_account_access_blocked": true,
+  "persistent_history_hide": true,
+  "no_ai_calls": true,
+  "collection": "account_checks_1792077950"
+}

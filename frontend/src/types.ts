@@ -38,6 +38,9 @@ export interface Analysis {
   accounted_usd?: number;
   publish_token?: string;
   published?: boolean;
+  history_id?: string;
+  history_saved?: boolean;
+  history_notice?: string;
   evidence_mode?: "web" | "documents" | "knowledge";
 }
 export interface Setup {

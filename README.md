@@ -8,7 +8,7 @@ A multi-perspective debate workspace for comparing arguments, evidence and prior
 
 1. Enter a debatable question. Documents and pasted text are optional.
 2. Turn **Search the web** on when current evidence is wanted. Off uses model knowledge and any documents supplied.
-3. Ask AI to suggest 2–5 viewpoints, or write your own. Edit, add and remove roles; the user chooses the final participants.
+3. Choose 2–5 participants, then generate topic-specific perspectives with AI or fill the empty fields yourself. Edit any suggestion before starting. Changing the topic clears old perspectives while keeping the participant count. The attendance example is a separate preview and never fills the form.
 4. Review the estimated cost, then explicitly start the debate.
 5. Follow two rounds: opening perspectives, then specific challenges and retained or revised positions. Inspect claims, sources and the graph; read or export a balanced 300–500 word report with no winner or policy recommendation.
 

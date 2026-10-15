@@ -46,15 +46,10 @@ const labels = {
   review: "Requires review",
 };
 const initials = ["01", "02", "03", "04", "05"];
-const baseRoles = [
-  "Individual & community perspective",
-  "Practical & institutional perspective",
-  "Critical evidence perspective",
-];
 type Tab = "debate" | "graph" | "report" | "sources";
 function App() {
   const [question, setQuestion] = useState("");
-  const [roles, setRoles] = useState(baseRoles);
+  const [roles, setRoles] = useState<string[]>(["", "", ""]);
   const [sources, setSources] = useState<Source[]>([]);
   const [pasted, setPasted] = useState("");
   const [showPaste, setShowPaste] = useState(false);
@@ -120,8 +115,6 @@ function App() {
     stop();
     setError("");
     setNotice("");
-    setQuestion(sample.question);
-    setRoles([...sample.perspectives]);
     setSuggestion("");
     setRolesConfirmed(false);
     setAnalysis(sample);
@@ -523,8 +516,13 @@ function App() {
                 disabled={busy}
                 onChange={(e) => {
                   setQuestion(e.target.value);
+                  setRoles(current => current.map(() => ""));
                   setRolesConfirmed(false);
                   setSuggestion("");
+                  setNotice("");
+                  setError("");
+                  setAnalysis(null);
+                  setSelected(null);
                 }}
               />
               <div className="input-footer">
@@ -654,12 +652,22 @@ function App() {
                 <h3>Perspectives</h3>
                 <span>{roles.length} DEBATERS · 2–5</span>
               </div>
+              <label className="participant-count" htmlFor="participant-count">
+                Number of participants
+                <select id="participant-count" disabled={busy} value={roles.length} onChange={e => {
+                  const count = Number(e.target.value);
+                  setRoles(current => Array.from({length: count}, (_, i) => current[i] ?? ""));
+                  setRolesConfirmed(false);
+                  setNotice("");
+                }}>
+                  {[2, 3, 4, 5].map(count => <option key={count} value={count}>{count}</option>)}
+                </select>
+              </label>
+              <button className="secondary-button" disabled={busy || reading || !ready || allowance?.remaining === 0 || question.trim().length < 5} onClick={() => void prepare()}><Sparkles size={15} /> Generate {roles.length} perspectives with AI</button>
               <p className="helper">
                 {rolesConfirmed
                   ? "Suggested for your question. Edit before starting."
-                  : analysis?.mode === "sample" && question === sample.question
-                    ? "Sample perspectives. Live suggestions need a model."
-                    : "Editable placeholders. Topic-specific suggestions need a model."}
+                  : "Enter your own perspectives or generate them with AI for your topic."}
               </p>
               <div className="role-inputs">
                 {roles.map((role, i) => (
@@ -670,6 +678,7 @@ function App() {
                     <input
                       aria-label={`Perspective ${i + 1}`}
                       maxLength={100}
+                      placeholder={`Enter perspective ${i + 1}`}
                       value={role}
                       disabled={busy}
                       onChange={(e) =>
@@ -678,10 +687,8 @@ function App() {
                         )
                       }
                     />
-                    <button type="button" aria-label={`Remove perspective ${i + 1}`} disabled={busy || roles.length <= 2} onClick={() => setRoles(v => v.filter((_, j) => i !== j))}><X size={14} /></button>
                   </label>
                 ))}
-                <button className="secondary-button" disabled={busy || roles.length >= 5} onClick={() => setRoles(v => [...v, ""])}><Plus size={14} /> Add perspective</button>
               </div>
               <p className="helper">AI suggests viewpoints. You choose the final 2–5 debaters.</p>
               <div className="rounds">
@@ -719,7 +726,6 @@ function App() {
                 {reviewed ? "Start debate" : "Review cost & start"}{" "}
                 <ArrowRight size={16} />
               </button>
-              <button className="secondary-button" disabled={busy || reading || !ready || allowance?.remaining === 0 || question.trim().length < 5} onClick={() => void prepare()}>Suggest {roles.length} perspectives</button>
               <p className="helper">{web ? "Shared web evidence will be retrieved for all debaters." : "Uses model knowledge and any documents you add. Unsourced facts remain unverified."}</p>
               {!ready && (
                 <p className="pending-note">
@@ -797,6 +803,11 @@ function App() {
                     <br />
                     then inspect what the evidence actually supports.
                   </p>
+                  <div className="sample-preview">
+                    <span className="eyebrow">EXAMPLE · PREVIEW ONLY</span>
+                    <strong>{sample.question}</strong>
+                    <p>{sample.perspectives.join(" · ")}</p>
+                  </div>
                   <button className="text-button" onClick={loadSample}>
                     See how it works <ArrowRight size={16} />
                   </button>

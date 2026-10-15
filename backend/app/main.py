@@ -6,18 +6,20 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
-from .budget import Ledger, LimitError
+from .budget import configured_ledger, LimitError
 from .engine import SYSTEM, debate
 from .models import AnalyzeRequest, PrepareRequest, PerspectiveOutput
 from .providers import ModelProvider, ProviderError, configuration
 from .retrieval import retrieve
 from .gateway import GatewayProvider, estimate
 from .search import search
+from .http_limits import BodyLimitMiddleware,network_ip
 
 app = FastAPI(title='Decision Atlas', version='0.1.0')
+app.add_middleware(BodyLimitMiddleware)
 ROOT = Path(__file__).resolve().parents[2]
 load_dotenv(ROOT / '.env', override=False)
-ledger = Ledger(os.getenv('LEDGER_PATH', str(ROOT / 'work' / 'usage.sqlite3')))
+ledger = configured_ledger(ROOT)
 provider = GatewayProvider(ledger) if os.getenv('MODEL_PROVIDER')=='vercel' else ModelProvider(ledger)
 run_lock = asyncio.Semaphore(1)
 
@@ -27,14 +29,15 @@ def status():
 
 @app.get('/api/allowance')
 def allowance(request:Request):
-    return ledger.allowance(request.client.host if request.client else 'unknown')
+    try:return ledger.allowance(network_ip(request))
+    except LimitError as e:raise HTTPException(503,str(e)) from None
 
 def available(request: Request):
     if not configuration()['configured']:
         raise HTTPException(503, 'Live analysis is not connected yet. Explore the labeled sample while a model is selected.')
     try:
         # Do not trust X-Forwarded-For. Configure the ASGI proxy allowlist for hosting.
-        ip=request.client.host if request.client else 'unknown'
+        ip=network_ip(request)
         if ledger.allowance(ip)['remaining']==0:
             raise LimitError('This network has used its five-debate allowance. The saved sample remains available.')
         ledger.request(ip)
@@ -70,7 +73,7 @@ async def analyze(payload: AnalyzeRequest, request: Request):
         async with run_lock:
             try:
                 if await request.is_disconnected(): return
-                ledger.start_debate(request.client.host if request.client else 'unknown')
+                ledger.start_debate(network_ip(request))
                 before=ledger.total()
                 selected=sources
                 if payload.include_web:

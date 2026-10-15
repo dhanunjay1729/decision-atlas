@@ -86,3 +86,12 @@ class Ledger:
             if used>=limit:
                 raise LimitError('This network has used its five-debate allowance. The saved sample remains available.')
             db.execute('INSERT INTO debates VALUES (?,?)',(key,time.time()))
+
+def configured_ledger(root):
+    backend=os.getenv('LEDGER_BACKEND','sqlite')
+    if backend=='firestore':
+        from .firestore_budget import FirestoreLedger
+        return FirestoreLedger()
+    if backend!='sqlite':raise ValueError('Unknown ledger backend.')
+    if os.getenv('K_SERVICE'):raise RuntimeError('Cloud Run requires LEDGER_BACKEND=firestore; local SQLite would lose counters.')
+    return Ledger(os.getenv('LEDGER_PATH',str(root/'work'/'usage.sqlite3')))

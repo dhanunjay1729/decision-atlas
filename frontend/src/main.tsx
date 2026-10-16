@@ -648,9 +648,33 @@ function App() {
                 ))}
               </div>
               <p className="helper">AI suggests viewpoints. You choose the final 2–5 debaters.</p>
+              <label className="toggle-row web-search-control">
+                <span>
+                  <Globe size={17} />
+                  <span>
+                    Search the web
+                    <small>
+                      {textSources.length
+                        ? "Supplement your documents"
+                        : "Enable when you want current evidence"}
+                    </small>
+                  </span>
+                </span>
+                <input
+                  type="checkbox"
+                  aria-label="Search the web"
+                  checked={web}
+                  disabled={busy}
+                  onChange={(e) => {
+                    setWeb(e.target.checked);
+                    setRolesConfirmed(false);
+                  }}
+                />
+                <span className={"toggle " + (web ? "on" : "")} />
+              </label>
               <details className="evidence-disclosure">
                 <summary>
-                  <span><BookOpen size={17} /> Add evidence <small>{web ? "Web on" : sources.length || pasted.trim() ? "Added" : "Optional"}</small></span>
+                  <span><BookOpen size={17} /> Add documents <small>{sources.length || pasted.trim() ? "Added" : "Optional"}</small></span>
                   <ChevronDown size={17} />
                 </summary>
                 <div className="evidence-controls"><p className="helper">Give every perspective the same sources to work from.</p>
@@ -724,31 +748,7 @@ function App() {
                   }}
                 />
               )}
-              <label className="toggle-row">
-                <span>
-                  <Globe size={17} />
-                  <span>
-                    {textSources.length
-                      ? "Search the web"
-                      : "Search the web"}
-                    <small>
-                      {textSources.length
-                        ? "Supplement your documents"
-                        : "Enable when you want current evidence"}
-                    </small>
-                  </span>
-                </span>
-                <input
-                  type="checkbox"
-                  checked={web}
-                  disabled={busy}
-                  onChange={(e) => {
-                    setWeb(e.target.checked);
-                    setRolesConfirmed(false);
-                  }}
-                />
-                <span className={"toggle " + (web ? "on" : "")} />
-              </label>
+
                 </div>
               </details>
               <div className="rounds">

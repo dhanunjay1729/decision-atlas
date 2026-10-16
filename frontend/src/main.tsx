@@ -29,6 +29,9 @@ import {
   Upload,
   X,
   Download,
+  ChevronDown,
+  PanelLeftClose,
+  PanelLeftOpen,
 } from "lucide-react";
 import * as pdfjs from "pdfjs-dist";
 import pdfWorker from "pdfjs-dist/build/pdf.worker.min.mjs?url";
@@ -60,6 +63,8 @@ function App() {
   const [showPaste, setShowPaste] = useState(false);
   const [web, setWeb] = useState(false);
   const [analysis, setAnalysis] = useState<Analysis | null>(null);
+  const [setupExpanded, setSetupExpanded] = useState(false);
+  const analysisRef = useRef<HTMLElement>(null);
   const [tab, setTab] = useState<Tab>("debate");
   const [selected, setSelected] = useState<Claim | null>(null);
   const [busy, setBusy] = useState(false);
@@ -95,12 +100,37 @@ function App() {
       abort.current?.abort();
     };
   }, []);
+  useEffect(() => {
+    if (analysis && page === "studio") {
+      setSetupExpanded(false);
+      analysisRef.current?.scrollIntoView({behavior: "instant", block: "start"});
+      analysisRef.current?.focus({preventScroll: true});
+    }
+  }, [analysis?.question, page]);
   function stop() {
     runId.current++;
     if (timer.current) clearInterval(timer.current);
     abort.current?.abort();
     setBusy(false);
     setProgress("Stopped");
+  }
+  function newDebate() {
+    stop();
+    setAnalysis(null);
+    setSelected(null);
+    setQuestion("");
+    setRoles(["", "", ""]);
+    setSources([]);
+    setPasted("");
+    setShowPaste(false);
+    setWeb(false);
+    setSuggestion("");
+    setNotice("");
+    setError("");
+    setRolesConfirmed(false);
+    setSetupExpanded(false);
+    setTab("debate");
+    requestAnimationFrame(() => document.getElementById("question")?.focus());
   }
   function loadSample() {
     setPage("studio");
@@ -504,20 +534,27 @@ function App() {
           <div className="page-heading">
             <div>
               <div className="eyebrow">MULTI-PERSPECTIVE DECISION SUPPORT</div>
-              <h1>A clearer view of the debate.</h1>
+              <h1>See every side.<br className="mobile-break" /> Think more clearly.</h1>
               <p>
-                Bring a question. Explore the arguments. Follow the evidence.
+                A question, different perspectives, and the evidence between them.
               </p>
+              {!analysis && <button className="text-button hero-sample" onClick={loadSample} disabled={busy || reading}><BookOpen size={15}/> Explore a sample debate <ArrowRight size={15}/></button>}
             </div>
             <span className="edition">
               <Sparkles size={15} /> {ready ? "Live workspace" : "Debate workspace"}
             </span>
           </div>
-          <div className="studio-grid">
-            <section className="setup-panel">
+          {analysis && <div className="workspace-toolbar">
+            <div><span className="eyebrow">DEBATE WORKSPACE</span><p>{analysis.perspectives.length} perspectives <span>·</span> 2 rounds <span>·</span> {analysis.sources.length} sources</p></div>
+            <div className="workspace-actions"><button className="secondary-button" aria-expanded={setupExpanded} aria-controls="debate-setup" onClick={() => setSetupExpanded(v => !v)}>{setupExpanded ? <PanelLeftClose size={16}/> : <PanelLeftOpen size={16}/>} {setupExpanded ? "Hide setup" : "Edit setup"}</button>
+            <button className="text-button" disabled={busy || reading} onClick={newDebate}> <Plus size={16}/> New debate</button></div>
+          </div>}
+          <div className={"studio-grid" + (analysis ? " has-analysis" : "") + (setupExpanded ? " setup-expanded" : "")}>
+
+            <section className="setup-panel" id="debate-setup">
               <div className="panel-heading">
                 <span className="section-number">01</span>
-                <h2>Frame your question</h2>
+                <h2>Start with a question</h2>
               </div>
               <label className="field-label" htmlFor="question">
                 What would you like to explore?
@@ -544,6 +581,11 @@ function App() {
                 <span>Ask a question with competing perspectives</span>
                 <span>{question.length}/800</span>
               </div>
+              {!question && <div className="question-examples"><span>TRY A QUESTION</span>{[
+                {question: "Should companies adopt a four-day workweek?", roles: ["Employee advocate", "Business owner", "Organizational researcher"]},
+                {question: "How should universities use AI in the classroom?", roles: ["Student advocate", "Teaching faculty", "Education researcher"]},
+                {question: "Should city centers prioritize pedestrians over cars?", roles: ["Local resident", "Small business owner", "Urban planner"]},
+              ].map(example => <button key={example.question} disabled={busy} onClick={() => {setQuestion(example.question);setRoles(example.roles);setRolesConfirmed(false);setError("");setNotice("");}}>{example.question}<ArrowUpRight size={13}/></button>)}</div>}
               {suggestion && (
                 <div className="suggestion">
                   <Sparkles size={16} />
@@ -564,9 +606,54 @@ function App() {
               )}
               <div className="divider" />
               <div className="section-title">
-                <h3>Evidence collection</h3>
-                <span>OPTIONAL</span>
+                <h3>Perspectives</h3>
+                <span>{roles.length} DEBATERS · 2–5</span>
               </div>
+              <label className="participant-count" htmlFor="participant-count">
+                Number of participants
+                <select id="participant-count" disabled={busy} value={roles.length} onChange={e => {
+                  const count = Number(e.target.value);
+                  setRoles(current => Array.from({length: count}, (_, i) => current[i] ?? ""));
+                  setRolesConfirmed(false);
+                  setNotice("");
+                }}>
+                  {[2, 3, 4, 5].map(count => <option key={count} value={count}>{count}</option>)}
+                </select>
+              </label>
+              <button className="secondary-button" disabled={busy || reading || !ready || allowance?.remaining === 0 || dailyPaused || question.trim().length < 5} onClick={() => void prepare()}><Sparkles size={15} /> Generate {roles.length} perspectives with AI</button>
+              <p className="helper">
+                {rolesConfirmed
+                  ? "Suggested for your question. Edit before starting."
+                  : "Enter your own perspectives or generate them with AI for your topic."}
+              </p>
+              <div className="role-inputs">
+                {roles.map((role, i) => (
+                  <label key={i}>
+                    <span className={`agent-avatar agent-${i}`}>
+                      {initials[i]}
+                    </span>
+                    <input
+                      aria-label={`Perspective ${i + 1}`}
+                      maxLength={100}
+                      placeholder={`Enter perspective ${i + 1}`}
+                      value={role}
+                      disabled={busy}
+                      onChange={(e) =>
+                        setRoles((v) =>
+                          v.map((r, j) => (j === i ? e.target.value : r)),
+                        )
+                      }
+                    />
+                  </label>
+                ))}
+              </div>
+              <p className="helper">AI suggests viewpoints. You choose the final 2–5 debaters.</p>
+              <details className="evidence-disclosure">
+                <summary>
+                  <span><BookOpen size={17} /> Add evidence <small>{web ? "Web on" : sources.length || pasted.trim() ? "Added" : "Optional"}</small></span>
+                  <ChevronDown size={17} />
+                </summary>
+                <div className="evidence-controls"><p className="helper">Give every perspective the same sources to work from.</p>
               <label
                 className={"upload-zone " + (busy || reading ? "disabled" : "")}
               >
@@ -662,50 +749,8 @@ function App() {
                 />
                 <span className={"toggle " + (web ? "on" : "")} />
               </label>
-              <div className="divider" />
-              <div className="section-title">
-                <h3>Perspectives</h3>
-                <span>{roles.length} DEBATERS · 2–5</span>
-              </div>
-              <label className="participant-count" htmlFor="participant-count">
-                Number of participants
-                <select id="participant-count" disabled={busy} value={roles.length} onChange={e => {
-                  const count = Number(e.target.value);
-                  setRoles(current => Array.from({length: count}, (_, i) => current[i] ?? ""));
-                  setRolesConfirmed(false);
-                  setNotice("");
-                }}>
-                  {[2, 3, 4, 5].map(count => <option key={count} value={count}>{count}</option>)}
-                </select>
-              </label>
-              <button className="secondary-button" disabled={busy || reading || !ready || allowance?.remaining === 0 || dailyPaused || question.trim().length < 5} onClick={() => void prepare()}><Sparkles size={15} /> Generate {roles.length} perspectives with AI</button>
-              <p className="helper">
-                {rolesConfirmed
-                  ? "Suggested for your question. Edit before starting."
-                  : "Enter your own perspectives or generate them with AI for your topic."}
-              </p>
-              <div className="role-inputs">
-                {roles.map((role, i) => (
-                  <label key={i}>
-                    <span className={`agent-avatar agent-${i}`}>
-                      {initials[i]}
-                    </span>
-                    <input
-                      aria-label={`Perspective ${i + 1}`}
-                      maxLength={100}
-                      placeholder={`Enter perspective ${i + 1}`}
-                      value={role}
-                      disabled={busy}
-                      onChange={(e) =>
-                        setRoles((v) =>
-                          v.map((r, j) => (j === i ? e.target.value : r)),
-                        )
-                      }
-                    />
-                  </label>
-                ))}
-              </div>
-              <p className="helper">AI suggests viewpoints. You choose the final 2–5 debaters.</p>
+                </div>
+              </details>
               <div className="rounds">
                 <GitBranch size={16} />
                 <span>2 rounds</span>
@@ -740,6 +785,7 @@ function App() {
                 {dailyPaused ? "Debates paused today" : "Start debate"}{" "}
                 <ArrowRight size={16} />
               </button>
+              {!busy && (!question.trim() || !validRoles) && <p className="start-hint">{!question.trim() ? "Add a question to get started." : "Add a different viewpoint for each perspective to start."}</p>}
               <p className="helper">{account.user ? "Completed debates are saved privately to My debates." : "No account needed to debate. Sign in only if you want to save future debates."}</p>
               <p className="helper">{web ? "Shared web evidence will be retrieved for all debaters." : "Uses model knowledge and any documents you add. Unsourced facts remain unverified."}</p>
               {!ready && (
@@ -756,11 +802,11 @@ function App() {
                 Explore the sample debate <ArrowUpRight size={15} />
               </button>
             </section>
-            <section className="analysis-panel">
+            <section className="analysis-panel" ref={analysisRef} tabIndex={-1} aria-label="Debate analysis">
               <div className="analysis-heading">
                 <div className="panel-heading">
                   <span className="section-number">02</span>
-                  <h2>Follow the reasoning</h2>
+                  <h2>{analysis ? "Explore the debate" : "A little perspective changes everything."}</h2>
                 </div>
                 <span className="tiny-label">
                   {analysis?.published ? "COMMUNITY DEBATE" : analysis?.mode === "sample"
@@ -782,6 +828,16 @@ function App() {
                   <button
                     role="tab"
                     aria-selected={tab === t.id}
+                    tabIndex={tab === t.id ? 0 : -1}
+                    onKeyDown={e => {
+                      if (!["ArrowRight", "ArrowLeft", "Home", "End"].includes(e.key)) return;
+                      e.preventDefault();
+                      const buttons = Array.from(e.currentTarget.parentElement!.querySelectorAll<HTMLButtonElement>('[role="tab"]'));
+                      const current = buttons.indexOf(e.currentTarget);
+                      const next = e.key === "Home" ? 0 : e.key === "End" ? buttons.length - 1 : (current + (e.key === "ArrowRight" ? 1 : -1) + buttons.length) % buttons.length;
+                      buttons[next].focus();
+                      buttons[next].click();
+                    }}
                     key={t.id}
                     className={tab === t.id ? "selected" : ""}
                     onClick={() => setTab(t.id)}
@@ -809,14 +865,14 @@ function App() {
                   </div>
                   <div className="eyebrow">A QUESTION. MULTIPLE PERSPECTIVES.</div>
                   <h2>
-                    Good decisions begin
+                    One question.
                     <br />
-                    with better questions.
+                    A wider point of view.
                   </h2>
                   <p>
-                    Watch perspectives challenge each other,
+                    See where perspectives agree, where they challenge each other,
                     <br />
-                    then inspect what the evidence actually supports.
+                    and what the evidence actually supports.
                   </p>
                   <div className="sample-preview">
                     <span className="eyebrow">EXAMPLE · PREVIEW ONLY</span>
@@ -896,6 +952,18 @@ function App() {
                   </div>
                   {analysis.published && <p className="sample-disclaimer">Community-shared debate. Original source passages are private; public source titles and links are shown where available.</p>}
                   {!busy && analysis.publish_token && <PublishDebate key={analysis.publish_token} token={analysis.publish_token} onPublished={()=>setFeaturedVersion(v=>v+1)}/>}
+                  {analysis.claims.length > 0 && (
+                    <div className="evidence-overview" aria-label="Claim assessment overview">
+                      <span className="overview-label"><ScanLine size={15}/> Evidence at a glance</span>
+                      <div>
+                        {Object.entries(labels).map(([status, label]) => {
+                          const count = analysis.claims.filter(c => c.status === status).length;
+                          return count ? <span key={status} className={`claim-chip ${status}`}><b>{count}</b> {label}</span> : null;
+                        })}
+                      </div>
+                      <small>Assessments apply to individual claims, not the whole argument.</small>
+                    </div>
+                  )}
                   {tab === "debate" && (
                     <div className="debate-content">
                       {[1, 2].map((round) => (
@@ -947,11 +1015,12 @@ function App() {
                                     return c ? (
                                       <button
                                         key={id}
-                                        className={`claim-chip ${c.status}`}
+                                        className={`claim-chip claim-preview ${c.status}`}
+                                        aria-label={`Inspect claim: ${c.text} — ${labels[c.status]}`}
                                         onClick={() => setSelected(c)}
                                       >
-                                        <span />
-                                        {labels[c.status]}{" "}
+                                        <span className="claim-status">{labels[c.status]}</span>
+                                        <span className="claim-excerpt">{c.text}</span>
                                         <ArrowUpRight size={12} />
                                       </button>
                                     ) : (
@@ -975,7 +1044,7 @@ function App() {
                                           )
                                         }
                                       >
-                                        {id}
+                                        {analysis.claims.find(c => c.id === id)?.text || "Claim being assessed"}
                                       </button>
                                     ))}
                                   </div>

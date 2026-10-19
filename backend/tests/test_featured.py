@@ -138,3 +138,45 @@ def test_hidden_entries_still_count_toward_storage_cap(store,monkeypatch):
     entry=store.publish(store.save_completed(analysis()),True)
     store.hide(entry['id'])
     with pytest.raises(FeaturedError,match='full'):store.publish(store.save_completed(analysis()),True)
+
+
+def test_saved_sharing_survives_token_expiry_and_is_private_idempotent(store,monkeypatch):
+    data=analysis();data['publish_token']=store.save_completed(data)
+    ident='a'*24
+    with pytest.raises(FeaturedError,match='consent'):store.publish_saved(ident,data)
+    now=featured.time.time()
+    monkeypatch.setattr(featured.time,'time',lambda:now+featured.DRAFT_TTL+1)
+    with ThreadPoolExecutor(max_workers=6) as pool:
+        entries=list(pool.map(lambda _:store.publish_saved(ident,data,True),range(8)))
+    assert len({entry['id'] for entry in entries})==1
+    entry=entries[0]
+    assert entry['id']!=ident and len(store.list())==1
+    assert 'PRIVATE_SOURCE_PASSAGE' not in json.dumps(entry)
+    assert 'publish_token' not in json.dumps(entry)
+    assert entry['analysis']['sources'][0]['text']==''
+
+
+def test_delete_public_copy_blocks_tokens_and_saved_reshares(store):
+    data=analysis();data['publish_token']=store.save_completed(data)
+    ident='b'*24
+    entry=store.publish_saved(ident,data,True)
+    assert store.publish(data['publish_token'],True)['id']==entry['id']
+    for _ in range(2):assert store.delete(entry['id'])=={'id':entry['id'],'deleted':True}
+    assert store.list()==[]
+    for action in (lambda:store.get(entry['id']),lambda:store.vote(entry['id'],'192.0.2.1'),
+                   lambda:store.publish(data['publish_token'],True),lambda:store.publish_saved(ident,data,True)):
+        with pytest.raises(FeaturedError) as exc:action()
+        assert exc.value.status_code==404
+    retained=store._run(lambda tx:tx.get('entry_'+entry['id']))
+    assert retained=={'id':entry['id'],'hidden':True,'deleted':True}
+
+
+def test_saved_share_reuses_guest_link_and_retains_moderation_after_draft_eviction(store):
+    data=analysis();token=store.save_completed(data);data['publish_token']=token
+    original=store.publish(token,True)
+    assert store.publish_saved('c'*24,data,True)['id']==original['id']
+    store.delete(original['id'])
+    key=featured._key(token)
+    store._run(lambda tx:tx.set('draft_'+str(int(key[:8],16)%featured.MAX_DRAFTS),{}))
+    with pytest.raises(FeaturedError) as exc:store.publish_saved('c'*24,data,True)
+    assert exc.value.status_code==404

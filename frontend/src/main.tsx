@@ -37,7 +37,7 @@ import * as pdfjs from "pdfjs-dist";
 import pdfWorker from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 import { sample } from "./sample";
 import {Accounts, MyDebates, useAccount} from "./accounts";
-import {FeaturedDebates, PublishDebate, type Allowance} from "./community";
+import {debateUrl, FeaturedDebates, PublishDebate, type Allowance} from "./community";
 import type { Analysis, Claim, Source } from "./types";
 import "@xyflow/react/dist/style.css";
 import "./style.css";
@@ -79,7 +79,20 @@ function App() {
   const [allowance, setAllowance] = useState<Allowance|null>(null);
   const [page,setPage] = useState<'studio'|'featured'|'account'|'history'>('studio');
   const [featuredVersion,setFeaturedVersion] = useState(0);
-  function refreshAllowance() {account.getToken().then(token=>fetch("/api/allowance",{headers:token?{Authorization:'Bearer '+token}:{}})).then(r=>r.ok?r.json():null).then(a=>{if(a)setAllowance(a);}).catch(()=>{});}
+  const [sharedId, setSharedId] = useState(() => new URLSearchParams(window.location.search).get('debate'));
+  const [shareLoading, setShareLoading] = useState(false);
+  const [shareError, setShareError] = useState('');
+  const accountIdentity = useRef(account.user?.uid ?? null);
+  accountIdentity.current = account.user?.uid ?? null;
+  const allowanceRequest = useRef(0);
+  function refreshAllowance() {
+    const request = ++allowanceRequest.current;
+    const uid = accountIdentity.current;
+    account.getToken().then(token => fetch('/api/allowance', {headers: token ? {Authorization: 'Bearer ' + token} : {}}))
+      .then(response => response.ok ? response.json() : null)
+      .then(data => {if (data && request === allowanceRequest.current && uid === accountIdentity.current) setAllowance(data);})
+      .catch(() => {});
+  }
   useEffect(()=>{refreshAllowance();const timer=setInterval(refreshAllowance,60000);return()=>clearInterval(timer);},[]);
   const validRoles = roles.every(r => r.trim()) && new Set(roles.map(r=>r.trim().toLowerCase())).size === roles.length;
   const dailyPaused=allowance?.daily?.available===false;
@@ -115,6 +128,7 @@ function App() {
     setProgress("Stopped");
   }
   function newDebate() {
+    clearSharedLink();
     stop();
     setAnalysis(null);
     setSelected(null);
@@ -133,6 +147,7 @@ function App() {
     requestAnimationFrame(() => document.getElementById("question")?.focus());
   }
   function loadSample() {
+    clearSharedLink();
     setPage("studio");
     stop();
     setError("");
@@ -277,6 +292,7 @@ function App() {
     }
   }
   async function runLive() {
+    clearSharedLink();
     setError("");
     setBusy(true);
     setVisible(0);
@@ -369,9 +385,77 @@ function App() {
     if(previousAccount.current===uid)return;
     const hadPrivateAccount=!!previousAccount.current;
     previousAccount.current=uid;
-    stop();setAnalysis(null);setSelected(null);setVisible(0);setNotice("");setError("");refreshAllowance();
+    allowanceRequest.current++;
+    setAllowance(null);
+    if (!analysis?.published) {stop();setAnalysis(null);setSelected(null);setVisible(0);}
+    setNotice("");setError("");refreshAllowance();
     if(hadPrivateAccount){setQuestion("");setRoles(current=>current.map(()=>""));setSources([]);setPasted("");setSuggestion("");setRolesConfirmed(false);}
   },[account.user?.uid]);
+  function clearSharedLink() {
+    setSharedId(null);
+    setShareError('');
+    setShareLoading(false);
+    const url = new URL(window.location.href);
+    if (url.searchParams.has('debate')) {
+      url.searchParams.delete('debate');
+      window.history.pushState({}, '', url);
+    }
+  }
+  function openPublicDebate(value: Analysis) {
+    stop();
+    setAnalysis(value);
+    setVisible(value.arguments.length);
+    setSelected(null);
+    setTab('debate');
+    setProgress('Shared public debate');
+    setPage('studio');
+    if (value.public_id) {
+      window.history.pushState({}, '', debateUrl(value.public_id));
+      setSharedId(value.public_id);
+    }
+  }
+  useEffect(() => {
+    const changed = () => {
+      const id = new URLSearchParams(window.location.search).get('debate');
+      setSharedId(id);
+      setShareError('');
+      if (!id) setAnalysis(current => current?.published ? null : current);
+    };
+    window.addEventListener('popstate', changed);
+    return () => window.removeEventListener('popstate', changed);
+  }, []);
+  useEffect(() => {
+    if (account.loading || !sharedId) return;
+    if (analysis?.public_id === sharedId && analysis.published) {setShareLoading(false);return;}
+    if (!/^[a-f0-9]{24}$/.test(sharedId)) {
+      setShareError('This debate link is invalid.');
+      setShareLoading(false);
+      setAnalysis(current => current?.published ? null : current);
+      return;
+    }
+    const controller = new AbortController();
+    let active = true;
+    stop();
+    setAnalysis(null);
+    setVisible(0);
+    setShareLoading(true);
+    setShareError('');
+    fetch('/api/featured/' + sharedId, {signal: controller.signal}).then(async response => {
+      if (!response.ok) throw Error(response.status === 404 ? 'This debate is unavailable. It may have been deleted by the admin.' : 'Could not open the shared debate. Please try again.');
+      return response.json();
+    }).then(data => {
+      if (!active) return;
+      stop();
+      setAnalysis({...data.analysis, public_id: data.id, published: true, publish_token: undefined});
+      setVisible(data.analysis.arguments.length);
+      setSelected(null);
+      setTab('debate');
+      setProgress('Shared public debate');
+      setPage('studio');
+    }).catch(error => {if (active && !controller.signal.aborted) setShareError(error instanceof Error ? error.message : 'Could not open this debate.');})
+      .finally(() => {if (active) setShareLoading(false);});
+    return () => {active = false; controller.abort();};
+  }, [sharedId, account.loading, account.user?.uid]);
   const samplePlaying = analysis?.mode === "sample" && busy;
   const graphNodes: Node[] = analysis
     ? [
@@ -529,7 +613,9 @@ function App() {
           <button aria-current={page==='account'?'page':undefined} onClick={()=>setPage('account')}>{account.user?'Account':'Sign in / Sign up'}</button>
         </nav>
         <main>
-          {page === 'account' ? <Accounts account={account}/> : page === 'history' ? <><MyDebates getToken={account.getToken} version={historyVersion} onOpen={a=>{stop();setAnalysis(a);setVisible(a.arguments.length);setSelected(null);setTab('debate');setProgress('Saved private debate');setPage('studio');}}/>{!account.user&&<button className='secondary-button' onClick={()=>setPage('account')}>Sign in / Sign up</button>}</> : page === 'featured' ? <FeaturedDebates getToken={account.getToken} owner={!!allowance?.owner} refresh={featuredVersion} onOpen={a=>{stop();setAnalysis(a);setVisible(a.arguments.length);setSelected(null);setTab("debate");setProgress("Published debate");setPage("studio");}}/> : <>
+          {shareLoading && <p className="notice" role="status">Opening shared debate…</p>}
+          {shareError && <div className="shared-link-error" role="alert"><p>{shareError}</p><button className="secondary-button" onClick={newDebate}>Start a new debate</button></div>}
+          {page === 'account' ? <Accounts account={account}/> : page === 'history' ? <><MyDebates getToken={account.getToken} version={historyVersion} onOpen={a=>{clearSharedLink();stop();setAnalysis(a);setVisible(a.arguments.length);setSelected(null);setTab('debate');setProgress('Saved private debate');setPage('studio');}}/>{!account.user&&<button className='secondary-button' onClick={()=>setPage('account')}>Sign in / Sign up</button>}</> : page === 'featured' ? <FeaturedDebates getToken={account.getToken} owner={!!account.user && !!allowance?.owner} refresh={featuredVersion} onOpen={openPublicDebate}/> : <>
           {dailyPaused && <div className="service-pause" role="status">Live debates are paused for today. The sample and Featured debates are still available. New debates resume after {new Date(allowance!.daily!.resets_at).toLocaleString()}.</div>}
           <div className="page-heading">
             <div>
@@ -567,6 +653,7 @@ function App() {
                 value={question}
                 disabled={busy}
                 onChange={(e) => {
+                  clearSharedLink();
                   setQuestion(e.target.value);
                   setRoles(current => current.map(() => ""));
                   setRolesConfirmed(false);
@@ -585,7 +672,7 @@ function App() {
                 {question: "Should companies adopt a four-day workweek?", roles: ["Employee advocate", "Business owner", "Organizational researcher"]},
                 {question: "How should universities use AI in the classroom?", roles: ["Student advocate", "Teaching faculty", "Education researcher"]},
                 {question: "Should city centers prioritize pedestrians over cars?", roles: ["Local resident", "Small business owner", "Urban planner"]},
-              ].map(example => <button key={example.question} disabled={busy} onClick={() => {setQuestion(example.question);setRoles(example.roles);setRolesConfirmed(false);setError("");setNotice("");}}>{example.question}<ArrowUpRight size={13}/></button>)}</div>}
+              ].map(example => <button key={example.question} disabled={busy} onClick={() => {clearSharedLink();setQuestion(example.question);setRoles(example.roles);setRolesConfirmed(false);setError("");setNotice("");}}>{example.question}<ArrowUpRight size={13}/></button>)}</div>}
               {suggestion && (
                 <div className="suggestion">
                   <Sparkles size={16} />
@@ -951,7 +1038,11 @@ function App() {
                     )}
                   </div>
                   {analysis.published && <p className="sample-disclaimer">Community-shared debate. Original source passages are private; public source titles and links are shown where available.</p>}
-                  {!busy && analysis.publish_token && <PublishDebate key={analysis.publish_token} token={analysis.publish_token} onPublished={()=>setFeaturedVersion(v=>v+1)}/>}
+                  {!busy && analysis.mode === 'live' && analysis.report && (analysis.public_id || analysis.publish_token || analysis.history_id) && <PublishDebate
+                    key={analysis.history_id || analysis.publish_token || analysis.public_id}
+                    analysis={analysis} getToken={account.getToken}
+                    onPublished={id => {setFeaturedVersion(v => v + 1);setAnalysis(current => current === analysis ? {...current, public_id: id} : current);}}
+                  />}
                   {analysis.claims.length > 0 && (
                     <div className="evidence-overview" aria-label="Claim assessment overview">
                       <span className="overview-label"><ScanLine size={15}/> Evidence at a glance</span>

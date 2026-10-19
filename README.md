@@ -45,7 +45,7 @@ flowchart TD
 - **Interactive argument graph:** trace questions, claims, sources, and challenges through connected nodes.
 - **Balanced reports:** read or export a 300–500 word brief that preserves disagreements and uncertainty rather than choosing a winner.
 - **Personal accounts:** Google sign-in or email/password signup, login, password reset, and private **My debates** history for completed signed-in runs.
-- **Consent-based sharing:** publish a completed debate to **Featured debates** only when you choose to. Trending order combines community likes and recency.
+- **Consent-based sharing:** create a public link from a completed debate or **My debates**, then copy it or use your device’s share sheet where supported. Publishing also adds the debate to **Featured debates**. Trending order combines community likes and recency.
 - **Desktop and mobile:** a responsive workspace, with navigation to the studio, featured collection, account, and private history.
 
 Visitors receive **five demo debate starts**. The introductory example is clearly labeled as a hand-authored sample.
@@ -107,7 +107,7 @@ The report summarizes evidence, priorities, challenges, revisions, and remaining
 
 Saved debates stay private. Public sharing is a separate, explicit choice after reviewing the generated text. Featured copies exclude raw source passages and internal accounting, but generated arguments may still contain details from user inputs. Community popularity is not evidence quality or expert endorsement.
 
-The demo retains up to 100 saved debates per account, with a bounded shared storage allocation. Guest runs are not attached retroactively. Hiding a saved debate removes it from the history list while retaining its private record. The owner can hide public posts from discovery and access.
+The demo retains up to 100 saved debates per account, with a bounded shared storage allocation. Guest runs are not attached retroactively. Hiding a saved debate removes it from the history list while retaining its private record. The admin can use **Delete from Featured** after signing in through Google with the configured `OWNER_GOOGLE_EMAIL`. Deleting removes the public copy and disables its share link while preserving the author’s private history. A minimal moderation record prevents repeated sharing of the same removed publication.
 
 ## Validation and results
 

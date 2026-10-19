@@ -162,9 +162,18 @@ class Publication(BaseModel):
     publish_token: str = Field(min_length=1,max_length=256)
     consent: bool = False
 
+class ShareConsent(BaseModel):
+    consent: bool = False
+
 def featured_call(callback):
     try:return callback()
     except FeaturedError as e:raise HTTPException(getattr(e,'status_code',400),str(e)) from None
+
+@app.post('/api/history/{entry_id}/publish')
+def history_publish(entry_id:str,payload:ShareConsent,request:Request):
+    uid=user_id(request,required=True)
+    entry=history_call(lambda:history_store.get(uid,entry_id))
+    return featured_call(lambda:featured_store.publish_saved(entry_id,entry['analysis'],consent=payload.consent))
 
 @app.get('/api/featured')
 def featured_list():return featured_call(lambda:featured_store.list())
@@ -184,6 +193,11 @@ def featured_like(entry_id:str,request:Request):
 def featured_hide(entry_id:str,request:Request):
     if not is_owner(request):raise HTTPException(403,'Owner access required.')
     return featured_call(lambda:featured_store.hide(entry_id))
+
+@app.delete('/api/featured/{entry_id}')
+def featured_delete(entry_id:str,request:Request):
+    if not is_owner(request):raise HTTPException(403,'Admin Google sign-in required.')
+    return featured_call(lambda:featured_store.delete(entry_id))
 
 @app.get('/api/_deployment/network')
 def deployment_network(request:Request):

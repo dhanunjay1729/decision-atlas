@@ -63,3 +63,24 @@ def test_guest_runs_not_saved_and_storage_failure_does_not_discard_completed_deb
  monkeypatch.setattr(main.history_store,'save_completed',failed)
  response=client.post('/api/analyze',headers={'Authorization':'Bearer signed-user-a'},json=payload)
  assert '"type": "complete"' in response.text and '"history_saved": false' in response.text
+
+
+def test_saved_share_checks_ownership_and_consent_without_inference(account_app,monkeypatch):
+ import app.main as main
+ from test_featured import analysis
+ client,ledger,provider=account_app
+ data=analysis();data['publish_token']=main.featured_store.save_completed(data)
+ ident=main.history_store.save_completed('signed-user-a',data)
+ a={'Authorization':'Bearer signed-user-a'};b={'Authorization':'Bearer signed-user-b'}
+ url='/api/history/'+ident+'/publish'
+ assert client.post(url,json={'consent':True}).status_code==401
+ assert client.post(url,headers=b,json={'consent':True}).status_code==404
+ assert client.post(url,headers=a,json={}).status_code==400
+ shared=client.post(url,headers=a,json={'consent':True})
+ assert shared.status_code==200
+ entry=shared.json()
+ assert client.post(url,headers=a,json={'consent':True}).json()['id']==entry['id']
+ assert client.get('/api/featured/'+entry['id']).status_code==200
+ assert 'PRIVATE_SOURCE_PASSAGE' not in str(entry)
+ assert client.get('/api/history/'+ident,headers=a).json()['analysis']['sources'][0]['text']=='PRIVATE_SOURCE_PASSAGE'
+ assert provider.prompts==[]

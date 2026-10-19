@@ -1,19 +1,193 @@
-import React, {useEffect, useState} from 'react';
+import React, {useEffect, useRef, useState} from 'react';
+import {Check, Copy, Link, Share2, ShieldCheck, Trash2} from 'lucide-react';
 import type {Analysis} from './types';
-export interface Allowance {limit:number|null;used:number;remaining:number|null;owner?:boolean;daily?:{available:boolean;resets_at:string}}
-async function api(path:string, body?:unknown, token?:string|null) {
-  const response=await fetch(path,{...(body===undefined?{}:{method:'POST',body:JSON.stringify(body)}),headers:{...(body===undefined?{}:{'Content-Type':'application/json'}),...(token?{Authorization:'Bearer '+token}:{})}});
-  const data=await response.json();
-  if(!response.ok)throw Error(typeof data.detail==='string'?data.detail:'This action is unavailable. Please try later.');
+
+export interface Allowance {
+  limit: number | null;
+  used: number;
+  remaining: number | null;
+  owner?: boolean;
+  daily?: {available: boolean; resets_at: string};
+}
+
+async function api(path: string, body?: unknown, token?: string | null, method?: string) {
+  const response = await fetch(path, {
+    method: method ?? (body === undefined ? 'GET' : 'POST'),
+    ...(body === undefined ? {} : {body: JSON.stringify(body)}),
+    headers: {
+      ...(body === undefined ? {} : {'Content-Type': 'application/json'}),
+      ...(token ? {Authorization: 'Bearer ' + token} : {}),
+    },
+  });
+  const data = await response.json();
+  if (!response.ok) throw Error(typeof data.detail === 'string' ? data.detail : 'This action is unavailable. Please try later.');
   return data;
 }
-export function PublishDebate({token,onPublished}:{token:string;onPublished:()=>void}) {
- const [consent,setConsent]=useState(false);const [busy,setBusy]=useState(false);const [done,setDone]=useState(false);const [error,setError]=useState('');
- return <div className="publish-debate"><h3>Share this debate?</h3><p>Publishing is optional. Your question, perspectives, arguments, claims, report, and source titles/links become publicly visible. Uploaded passages are excluded, but the generated text may still quote or reveal details from them. Review the debate before sharing private information.</p>{done?<p className="notice">Published to Featured debates.</p>:<><label className="consent-row"><input type="checkbox" checked={consent} onChange={e=>setConsent(e.target.checked)}/>I consent to making this debate publicly visible and have permission to share its contents.</label><button className="secondary-button" disabled={!consent||busy} onClick={async()=>{setBusy(true);setError('');try{await api('/api/featured',{publish_token:token,consent:true});setDone(true);onPublished();}catch(e){setError(e instanceof Error?e.message:'Could not publish.');}finally{setBusy(false);}}}>{busy?'Publishing…':'Publish to Featured debates'}</button></>}{error&&<p className="error" role="alert">{error}</p>}</div>;
+
+export function debateUrl(id: string) {
+  const url = new URL('/', window.location.origin);
+  url.searchParams.set('debate', id);
+  return url.toString();
 }
-interface Entry {id:string;question:string;perspectives:string[];published_at:number;likes:number;evidence_mode:string;analysis?:Analysis}
-export function FeaturedDebates({onOpen,refresh,owner,getToken}:{getToken:()=>Promise<string|null>;onOpen:(analysis:Analysis)=>void;refresh:number;owner:boolean}) {
- const [entries,setEntries]=useState<Entry[]>([]);const [loading,setLoading]=useState(true);const [error,setError]=useState('');const [pending,setPending]=useState('');
- useEffect(()=>{let active=true;setLoading(true);api('/api/featured').then(data=>{if(active)setEntries(Array.isArray(data)?data:data.entries??[]);}).catch(e=>{if(active)setError(e.message);}).finally(()=>{if(active)setLoading(false);});return()=>{active=false;};},[refresh]);
- return <section className="featured-section"><div className="eyebrow">COMMUNITY PERSPECTIVES</div><h1>Featured debates</h1><p>Explore debates people chose to share. Trending debates rise with community likes and recency. These are AI-generated analyses, not endorsed conclusions.</p>{loading?<p role="status">Loading debates…</p>:!entries.length&&!error?<div className="featured-empty"><h2>Room for the first perspective.</h2><p>Complete a debate in the studio, review it, and choose whether to publish it here.</p></div>:<div className="featured-grid">{entries.map(entry=><article className="featured-card" key={entry.id}><span className="eyebrow">{entry.evidence_mode==='web'?'WEB EVIDENCE':entry.evidence_mode==='documents'?'DOCUMENT BASED':'MODEL KNOWLEDGE'}</span><h2>{entry.question}</h2><p>{entry.perspectives.join(' · ')}</p><small>{new Date(entry.published_at*1000).toLocaleDateString()} · {entry.likes} {entry.likes===1?'like':'likes'}</small><div className="featured-actions"><button className="secondary-button" disabled={!!pending} onClick={async()=>{setPending(entry.id);setError('');try{const data=await api('/api/featured/'+entry.id);onOpen({...data.analysis,mode:'live',publish_token:undefined,published:true});}catch(e){setError(e instanceof Error?e.message:'Unable to open debate.');}finally{setPending('');}}}>Read debate</button><button className="text-button" disabled={!!pending} aria-label={`Like debate: ${entry.question}`} onClick={async()=>{setPending(entry.id);setError('');try{const data=await api('/api/featured/'+entry.id+'/like',{});setEntries(current=>current.map(x=>x.id===entry.id?{...x,likes:data.likes}:x));}catch(e){setError(e instanceof Error?e.message:'Unable to like debate.');}finally{setPending('');}}}>♡ Like</button>{owner&&<button className="text-button" disabled={!!pending} onClick={async()=>{setPending(entry.id);setError('');try{await api('/api/featured/'+entry.id+'/hide',{},await getToken());setEntries(current=>current.filter(x=>x.id!==entry.id));}catch(e){setError(e instanceof Error?e.message:'Unable to hide debate.');}finally{setPending('');}}}>Hide</button>}</div></article>)}</div>}{error&&<p role="alert" className="error">{error}</p>}<p className="helper">One like per network per debate. Ranking can be influenced by shared networks or VPNs.</p></section>;
+
+export function ShareLink({id, question}: {id: string; question: string}) {
+  const [copied, setCopied] = useState(false);
+  const [error, setError] = useState('');
+  const input = useRef<HTMLInputElement>(null);
+  const url = debateUrl(id);
+  async function copy() {
+    setError('');
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopied(true);
+    } catch {
+      input.current?.focus();
+      input.current?.select();
+      setError('Copy the selected link to share this debate.');
+    }
+  }
+  return <div className="share-link">
+    <label className="share-link-label" htmlFor={'share-' + id}><Link size={15}/> Public debate link</label>
+    <div className="share-link-controls">
+      <input ref={input} id={'share-' + id} aria-label="Public debate link" readOnly value={url} onFocus={e => e.currentTarget.select()}/>
+      <button className="secondary-button" onClick={() => void copy()}>{copied ? <Check size={16}/> : <Copy size={16}/>} {copied ? 'Copied' : 'Copy link'}</button>
+      {typeof navigator.share === 'function' && <button className="secondary-button" onClick={async () => {
+        setError('');
+        try {await navigator.share({title: 'Decision Atlas', text: question, url});}
+        catch (error) {if (!(error instanceof Error) || error.name !== 'AbortError') setError('Use Copy link to share this debate.');}
+      }}><Share2 size={16}/> Share</button>}
+    </div>
+    <span className="share-feedback" role="status">{error || (copied ? 'Link copied. Anyone with the link can read the public debate.' : 'Anyone with this link can read the public copy.')}</span>
+  </div>;
+}
+
+export function PublishDebate({analysis, getToken, onPublished}: {
+  analysis: Analysis;
+  getToken: () => Promise<string | null>;
+  onPublished: (id: string) => void;
+}) {
+  const [consent, setConsent] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [publicId, setPublicId] = useState(analysis.public_id ?? '');
+  const [error, setError] = useState('');
+  async function publish() {
+    setBusy(true);
+    setError('');
+    try {
+      let entry;
+      if (analysis.history_id) {
+        const token = await getToken();
+        if (!token) throw Error('Sign in to share a debate from your private history.');
+        entry = await api('/api/history/' + encodeURIComponent(analysis.history_id) + '/publish', {consent: true}, token);
+      } else {
+        entry = await api('/api/featured', {publish_token: analysis.publish_token, consent: true});
+      }
+      setPublicId(entry.id);
+      onPublished(entry.id);
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'Could not share this debate.');
+    } finally {setBusy(false);}
+  }
+  return <section className="publish-debate" aria-label="Share debate">
+    <div className="share-heading"><Share2 size={19}/><h3>{publicId ? 'Share this debate' : 'Turn this debate into a conversation'}</h3></div>
+    {publicId ? <ShareLink id={publicId} question={analysis.question}/> : <>
+      <p>Create a public link and add this debate to Featured debates. Your question, perspectives, arguments, claims, report, and source titles/links become public. Original uploaded passages are excluded, but the generated text may still quote or reveal details from them.</p>
+      <label className="consent-row"><input type="checkbox" checked={consent} disabled={busy} onChange={e => setConsent(e.target.checked)}/>I have reviewed the debate and agree to share its contents publicly.</label>
+      <button className="secondary-button" disabled={!consent || busy} onClick={() => void publish()}><Link size={16}/>{busy ? 'Creating link…' : 'Create public share link'}</button>
+    </>}
+    {error && <p className="error" role="alert">{error}</p>}
+  </section>;
+}
+
+interface Entry {
+  id: string;
+  question: string;
+  perspectives: string[];
+  published_at: number;
+  likes: number;
+  evidence_mode: string;
+}
+
+export function FeaturedDebates({onOpen, refresh, owner, getToken}: {
+  getToken: () => Promise<string | null>;
+  onOpen: (analysis: Analysis) => void;
+  refresh: number;
+  owner: boolean;
+}) {
+  const [entries, setEntries] = useState<Entry[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
+  const [pending, setPending] = useState('');
+  const [shareId, setShareId] = useState('');
+  const [deleteId, setDeleteId] = useState('');
+  useEffect(() => {
+    let active = true;
+    setLoading(true);
+    setError('');
+    api('/api/featured').then(data => {
+      if (active) setEntries(Array.isArray(data) ? data : data.entries ?? []);
+    }).catch(error => {if (active) setError(error.message);})
+      .finally(() => {if (active) setLoading(false);});
+    return () => {active = false;};
+  }, [refresh]);
+  useEffect(() => {if (!owner) setDeleteId('');}, [owner]);
+
+  async function remove(entry: Entry) {
+    setPending(entry.id);
+    setError('');
+    try {
+      const token = await getToken();
+      if (!token) throw Error('Sign in with your admin Google account to delete a featured debate.');
+      await api('/api/featured/' + entry.id, undefined, token, 'DELETE');
+      setEntries(current => current.filter(item => item.id !== entry.id));
+      setDeleteId('');
+      setNotice('Public debate deleted. Its shared link is no longer available.');
+    } catch (error) {setError(error instanceof Error ? error.message : 'Unable to delete debate.');}
+    finally {setPending('');}
+  }
+
+  return <section className="featured-section">
+    <div className="eyebrow">COMMUNITY PERSPECTIVES</div>
+    <h1>Featured debates</h1>
+    <p>Explore debates people chose to share, or send someone a debate worth discussing. Trending order combines likes and recency; these are AI-generated analyses, not endorsed conclusions.</p>
+    {owner && <div className="admin-banner"><ShieldCheck size={19}/><div><strong>Admin controls enabled</strong><span>You can delete public debates below. Shared links to deleted debates will stop working.</span></div></div>}
+    {notice && <p className="notice" role="status">{notice}</p>}
+    {loading ? <p role="status">Loading debates…</p> : !entries.length && !error ? <div className="featured-empty"><h2>Room for the first perspective.</h2><p>Complete a debate in the studio, review it, and create a public share link to feature it here.</p></div> : <div className="featured-grid">
+      {entries.map(entry => <article className="featured-card" key={entry.id}>
+        <span className="eyebrow">{entry.evidence_mode === 'web' ? 'WEB EVIDENCE' : entry.evidence_mode === 'documents' ? 'DOCUMENT BASED' : 'MODEL KNOWLEDGE'}</span>
+        <h2>{entry.question}</h2>
+        <p>{entry.perspectives.join(' · ')}</p>
+        <small>{new Date(entry.published_at * 1000).toLocaleDateString()} · {entry.likes} {entry.likes === 1 ? 'like' : 'likes'}</small>
+        <div className="featured-actions">
+          <button className="secondary-button" disabled={!!pending} onClick={async () => {
+            setPending(entry.id); setError('');
+            try {
+              const data = await api('/api/featured/' + entry.id);
+              onOpen({...data.analysis, mode: 'live', publish_token: undefined, public_id: entry.id, published: true});
+            } catch (error) {setError(error instanceof Error ? error.message : 'Unable to open debate.');}
+            finally {setPending('');}
+          }}>Read debate</button>
+          <button className="text-button" aria-expanded={shareId === entry.id} onClick={() => setShareId(current => current === entry.id ? '' : entry.id)}><Share2 size={15}/> Share</button>
+          <button className="text-button" disabled={!!pending} aria-label={`Like debate: ${entry.question}`} onClick={async () => {
+            setPending(entry.id); setError('');
+            try {
+              const data = await api('/api/featured/' + entry.id + '/like', {});
+              setEntries(current => current.map(item => item.id === entry.id ? {...item, likes: data.likes} : item));
+            } catch (error) {setError(error instanceof Error ? error.message : 'Unable to like debate.');}
+            finally {setPending('');}
+          }}>♡ Like</button>
+        </div>
+        {shareId === entry.id && <ShareLink id={entry.id} question={entry.question}/>}
+        {owner && <div className="admin-card-actions">
+          {deleteId === entry.id ? <div className="delete-confirm" role="group" aria-label="Confirm public debate deletion">
+            <p><strong>Delete this featured debate?</strong> Its public copy and shared link will be removed. The author's private saved debate is kept.</p>
+            <div><button className="danger-button" disabled={!!pending} onClick={() => void remove(entry)}>{pending === entry.id ? 'Deleting…' : 'Delete debate'}</button><button className="secondary-button" autoFocus disabled={!!pending} onClick={() => setDeleteId('')}>Cancel</button></div>
+          </div> : <button className="text-button danger-text" disabled={!!pending} onClick={() => setDeleteId(entry.id)}><Trash2 size={15}/> Delete from Featured</button>}
+        </div>}
+      </article>)}
+    </div>}
+    {error && <p role="alert" className="error">{error}</p>}
+    <p className="helper">One like per network per debate. Ranking can be influenced by shared networks or VPNs.</p>
+  </section>;
 }

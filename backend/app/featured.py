@@ -198,6 +198,65 @@ class FeaturedStore:
         if not entry or entry.get('hidden'):raise FeaturedError('Featured debate not found.',404)
         return _public(entry)
 
+    def publish_saved(self,ident,analysis,consent=False):
+        """Publish an authenticated history snapshot, even after its guest token expires.
+
+        The HTTP caller must first load the snapshot using the verified owner's
+        UID. A stable salted ID makes repeated shares idempotent without adding
+        an unbounded index or exposing the private history identifier.
+        """
+        if consent is not True:raise FeaturedError('Explicit consent is required to share this debate.')
+        ident=_id(ident)
+        public_id=self.ledger.ip_key('shared-history:'+ident)[:24]
+        content=sanitize(analysis)
+        token=analysis.get('publish_token')
+        key=_key(token) if token else None
+        slot='draft_'+str(int(key[:8],16)%MAX_DRAFTS) if key else None
+        def write(tx):
+            draft=tx.get(slot) if slot else {}
+            alias=tx.get('history_'+public_id)
+            state=tx.get('state')
+            # Reuse a previously published guest capability when still retained.
+            linked=draft.get('published') if key and draft.get('token')==key else None
+            entry_id=alias.get('public_id') or linked or public_id
+            existing=tx.get('entry_'+entry_id)
+            if existing:
+                if existing.get('hidden'):
+                    raise FeaturedError('This public debate has been removed by the admin.',404)
+                if not alias:tx.set('history_'+public_id,{'public_id':entry_id})
+                return existing
+            entries=state.get('entries',{})
+            total_count=state.get('total_count',len(entries))
+            if total_count>=MAX_ENTRIES:raise FeaturedError('The featured gallery is full.')
+            entry={'id':entry_id,'published_at':time.time(),'analysis':content,'voters':[]}
+            entries[entry_id]=_summary(entry)
+            tx.set('entry_'+entry_id,entry)
+            tx.set('history_'+public_id,{'public_id':entry_id})
+            tx.set('state',{'entries':entries,'total_count':total_count+1})
+            if key and draft.get('token')==key:
+                draft['published']=entry_id
+                tx.set(slot,draft)
+            return entry
+        return _public(self._run(write))
+
+    def delete(self,ident):
+        """Delete the public copy; retain only a bounded moderation tombstone.
+
+        Retaining the ID blocks stale publish capabilities and history re-shares
+        from restoring admin-deleted content. The author's history is separate.
+        """
+        ident=_id(ident)
+        def write(tx):
+            entry=tx.get('entry_'+ident);state=tx.get('state')
+            if not entry:raise FeaturedError('Featured debate not found.',404)
+            if not entry.get('deleted'):
+                state['total_count']=state.get('total_count',len(state.get('entries',{})))
+                state.get('entries',{}).pop(ident,None)
+                tx.set('entry_'+ident,{'id':ident,'hidden':True,'deleted':True})
+                tx.set('state',state)
+            return {'id':ident,'deleted':True}
+        return self._run(write)
+
     def list(self,limit=20):
         entries=self._run(lambda tx:tx.get('state')).get('entries',{})
         return sorted((_scored(e) for e in entries.values()),key=lambda e:(e['score'],e['published_at']),reverse=True)[:max(1,min(50,limit))]

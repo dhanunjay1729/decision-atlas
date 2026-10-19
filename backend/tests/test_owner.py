@@ -69,3 +69,27 @@ def test_only_completed_server_debate_can_be_published_with_consent(owner_app):
  assert client.post('/api/featured/'+ident+'/hide',headers={'Authorization':'Bearer owner'}).status_code==200
  assert client.get('/api/featured').json()==[]
  assert client.get('/api/featured/'+ident).status_code==404
+
+
+def test_admin_delete_requires_verified_google_and_keeps_private_history(owner_app,monkeypatch):
+ import app.main as main
+ import app.accounts as accounts
+ from test_featured import analysis
+ client,ledger,provider=owner_app
+ data=analysis();data['publish_token']=main.featured_store.save_completed(data)
+ ident=main.history_store.save_completed('owner-uid',data)
+ public=main.featured_store.publish_saved(ident,data,True)
+ url='/api/featured/'+public['id']
+ assert client.delete(url).status_code==403
+ assert client.delete(url,headers={'Authorization':'Bearer forged'}).status_code==403
+ verified=accounts.verify_token
+ def verify(token):
+  if token=='password-owner':return {'uid':'owner-uid','email':'pantadhanunjay@gmail.com','email_verified':True,'firebase':{'sign_in_provider':'password'}}
+  return verified(token)
+ monkeypatch.setattr(accounts,'verify_token',verify)
+ assert client.delete(url,headers={'Authorization':'Bearer password-owner'}).status_code==403
+ for _ in range(2):assert client.delete(url,headers={'Authorization':'Bearer owner'}).status_code==200
+ assert client.get(url).status_code==404 and client.get('/api/featured').json()==[]
+ assert client.get('/api/history/'+ident,headers={'Authorization':'Bearer owner'}).status_code==200
+ assert client.post('/api/history/'+ident+'/publish',headers={'Authorization':'Bearer owner'},json={'consent':True}).status_code==404
+ assert provider.prompts==[]

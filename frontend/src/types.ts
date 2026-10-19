@@ -38,6 +38,7 @@ export interface Analysis {
   accounted_usd?: number;
   publish_token?: string;
   published?: boolean;
+  public_id?: string;
   history_id?: string;
   history_saved?: boolean;
   history_notice?: string;

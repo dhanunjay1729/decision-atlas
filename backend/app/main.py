@@ -15,7 +15,8 @@ from .gateway import GatewayProvider, estimate
 from .search import search
 from .http_limits import BodyLimitMiddleware,network_ip
 from .owner import is_owner
-from .featured import create_store, FeaturedError
+from .featured import create_store, FeaturedError, _key
+from .sharing import create_sharing
 from pydantic import BaseModel, Field
 from .accounts import auth_config, user_id
 from .history import create_history, HistoryError
@@ -29,6 +30,7 @@ provider = GatewayProvider(ledger) if os.getenv('MODEL_PROVIDER')=='vercel' else
 run_lock = asyncio.Semaphore(1)
 featured_store = create_store(ROOT, ledger)
 history_store = create_history(ROOT, ledger)
+sharing_store = create_sharing(ROOT, ledger)
 
 @app.get('/api/status')
 def status():
@@ -174,6 +176,22 @@ def history_publish(entry_id:str,payload:ShareConsent,request:Request):
     uid=user_id(request,required=True)
     entry=history_call(lambda:history_store.get(uid,entry_id))
     return featured_call(lambda:featured_store.publish_saved(entry_id,entry['analysis'],consent=payload.consent))
+
+@app.post('/api/shares')
+def share_completed(payload:Publication):
+    content=featured_call(lambda:featured_store.completed(payload.publish_token))
+    return featured_call(lambda:sharing_store.create(_key(payload.publish_token),content,payload.consent))
+
+@app.post('/api/history/{entry_id}/share')
+def share_history(entry_id:str,payload:ShareConsent,request:Request):
+    uid=user_id(request,required=True)
+    entry=history_call(lambda:history_store.get(uid,entry_id))
+    analysis=entry['analysis']
+    identity=_key(analysis['publish_token']) if analysis.get('publish_token') else 'history:'+entry_id
+    return featured_call(lambda:sharing_store.create(identity,analysis,payload.consent))
+
+@app.get('/api/shares/{entry_id}')
+def shared_get(entry_id:str):return featured_call(lambda:sharing_store.get(entry_id))
 
 @app.get('/api/featured')
 def featured_list():return featured_call(lambda:featured_store.list())

@@ -39,6 +39,8 @@ export interface Analysis {
   publish_token?: string;
   published?: boolean;
   public_id?: string;
+  share_id?: string;
+  shared?: boolean;
   history_id?: string;
   history_saved?: boolean;
   history_notice?: string;

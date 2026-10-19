@@ -45,7 +45,8 @@ flowchart TD
 - **Interactive argument graph:** trace questions, claims, sources, and challenges through connected nodes.
 - **Balanced reports:** read or export a 300–500 word brief that preserves disagreements and uncertainty rather than choosing a winner.
 - **Personal accounts:** Google sign-in or email/password signup, login, password reset, and private **My debates** history for completed signed-in runs.
-- **Consent-based sharing:** create a public link from a completed debate or **My debates**, then copy it or use your device’s share sheet where supported. Publishing also adds the debate to **Featured debates**. Trending order combines community likes and recency.
+- **Unlisted sharing:** create a link from a completed debate or **My debates**, then copy it or use your device’s share sheet where supported. Anyone with the link can read it; creating a link does not add it to the gallery.
+- **Featured debates:** independently publish a completed debate to the public gallery with separate consent. Trending order combines community likes and recency.
 - **Desktop and mobile:** a responsive workspace, with navigation to the studio, featured collection, account, and private history.
 
 Visitors receive **five demo debate starts**. The introductory example is clearly labeled as a hand-authored sample.
@@ -105,9 +106,9 @@ The report summarizes evidence, priorities, challenges, revisions, and remaining
 
 **Accounts are optional. Anyone can start a debate as a guest.** When signed in, completed debates are saved automatically in My debates. Accounts use Google sign-in or Google-managed email/password authentication; the application receives identity tokens and does not receive or store account passwords. Password reset and sign-out are included.
 
-Saved debates stay private. Public sharing is a separate, explicit choice after reviewing the generated text. Featured copies exclude raw source passages and internal accounting, but generated arguments may still contain details from user inputs. Community popularity is not evidence quality or expert endorsement.
+Saved debates stay private. Unlisted sharing and publishing to Featured are independent, explicit choices after reviewing the generated text. Featured copies exclude raw source passages and internal accounting, but generated arguments may still contain details from user inputs. Community popularity is not evidence quality or expert endorsement.
 
-The demo retains up to 100 saved debates per account, with a bounded shared storage allocation. Guest runs are not attached retroactively. Hiding a saved debate removes it from the history list while retaining its private record. The admin can use **Delete from Featured** after signing in through Google with the configured `OWNER_GOOGLE_EMAIL`. Deleting removes the public copy and disables its share link while preserving the author’s private history. A minimal moderation record prevents repeated sharing of the same removed publication.
+The demo retains up to 100 saved debates per account, with a bounded shared storage allocation. Guest runs are not attached retroactively. Hiding a saved debate removes it from the history list while retaining its private record. The admin can use **Delete from Featured** after signing in through Google with the configured `OWNER_GOOGLE_EMAIL`. Deleting removes the Featured publication while preserving the author’s private history and independently created share links. Shared snapshots use their own storage and URLs (`?share=…`); Featured views use `?debate=…`. A minimal moderation record prevents restoring the same removed Featured publication.
 
 ## Validation and results
 

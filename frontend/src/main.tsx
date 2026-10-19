@@ -37,7 +37,7 @@ import * as pdfjs from "pdfjs-dist";
 import pdfWorker from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 import { sample } from "./sample";
 import {Accounts, MyDebates, useAccount} from "./accounts";
-import {debateUrl, FeaturedDebates, PublishDebate, type Allowance} from "./community";
+import {featuredUrl, FeaturedDebates, PublishDebate, ShareDebate, type Allowance} from "./community";
 import type { Analysis, Claim, Source } from "./types";
 import "@xyflow/react/dist/style.css";
 import "./style.css";
@@ -52,6 +52,11 @@ const labels = {
 };
 const initials = ["01", "02", "03", "04", "05"];
 type Tab = "debate" | "graph" | "report" | "sources";
+function linkedDebate() {
+  const query=new URLSearchParams(window.location.search);
+  return query.has('share') ? 'share:'+query.get('share') : query.has('debate') ? 'featured:'+query.get('debate') : null;
+}
+
 function App() {
   const account=useAccount();
   const [historyVersion,setHistoryVersion]=useState(0);
@@ -79,7 +84,7 @@ function App() {
   const [allowance, setAllowance] = useState<Allowance|null>(null);
   const [page,setPage] = useState<'studio'|'featured'|'account'|'history'>('studio');
   const [featuredVersion,setFeaturedVersion] = useState(0);
-  const [sharedId, setSharedId] = useState(() => new URLSearchParams(window.location.search).get('debate'));
+  const [sharedId, setSharedId] = useState(linkedDebate);
   const [shareLoading, setShareLoading] = useState(false);
   const [shareError, setShareError] = useState('');
   const accountIdentity = useRef(account.user?.uid ?? null);
@@ -387,7 +392,7 @@ function App() {
     previousAccount.current=uid;
     allowanceRequest.current++;
     setAllowance(null);
-    if (!analysis?.published) {stop();setAnalysis(null);setSelected(null);setVisible(0);}
+    if (!analysis?.published && !analysis?.shared) {stop();setAnalysis(null);setSelected(null);setVisible(0);}
     setNotice("");setError("");refreshAllowance();
     if(hadPrivateAccount){setQuestion("");setRoles(current=>current.map(()=>""));setSources([]);setPasted("");setSuggestion("");setRolesConfirmed(false);}
   },[account.user?.uid]);
@@ -396,8 +401,9 @@ function App() {
     setShareError('');
     setShareLoading(false);
     const url = new URL(window.location.href);
-    if (url.searchParams.has('debate')) {
+    if (url.searchParams.has('debate') || url.searchParams.has('share')) {
       url.searchParams.delete('debate');
+      url.searchParams.delete('share');
       window.history.pushState({}, '', url);
     }
   }
@@ -407,30 +413,32 @@ function App() {
     setVisible(value.arguments.length);
     setSelected(null);
     setTab('debate');
-    setProgress('Shared public debate');
+    setProgress('Featured debate');
     setPage('studio');
     if (value.public_id) {
-      window.history.pushState({}, '', debateUrl(value.public_id));
-      setSharedId(value.public_id);
+      window.history.pushState({}, '', featuredUrl(value.public_id));
+      setSharedId('featured:'+value.public_id);
     }
   }
   useEffect(() => {
     const changed = () => {
-      const id = new URLSearchParams(window.location.search).get('debate');
+      const id = linkedDebate();
       setSharedId(id);
       setShareError('');
-      if (!id) setAnalysis(current => current?.published ? null : current);
+      if (!id) setAnalysis(current => (current?.published || current?.shared) ? null : current);
     };
     window.addEventListener('popstate', changed);
     return () => window.removeEventListener('popstate', changed);
   }, []);
   useEffect(() => {
     if (account.loading || !sharedId) return;
-    if (analysis?.public_id === sharedId && analysis.published) {setShareLoading(false);return;}
-    if (!/^[a-f0-9]{24}$/.test(sharedId)) {
+    const [kind,id]=sharedId.split(':');
+    const unlisted=kind==='share';
+    if ((unlisted ? analysis?.share_id===id && analysis.shared : analysis?.public_id===id && analysis.published)) {setShareLoading(false);return;}
+    if (!/^[a-f0-9]{24}$/.test(id)) {
       setShareError('This debate link is invalid.');
       setShareLoading(false);
-      setAnalysis(current => current?.published ? null : current);
+      setAnalysis(current => (current?.published || current?.shared) ? null : current);
       return;
     }
     const controller = new AbortController();
@@ -440,17 +448,17 @@ function App() {
     setVisible(0);
     setShareLoading(true);
     setShareError('');
-    fetch('/api/featured/' + sharedId, {signal: controller.signal}).then(async response => {
-      if (!response.ok) throw Error(response.status === 404 ? 'This debate is unavailable. It may have been deleted by the admin.' : 'Could not open the shared debate. Please try again.');
+    fetch((unlisted ? '/api/shares/' : '/api/featured/') + id, {signal: controller.signal}).then(async response => {
+      if (!response.ok) throw Error(response.status === 404 ? 'This debate link is unavailable.' : 'Could not open the shared debate. Please try again.');
       return response.json();
     }).then(data => {
       if (!active) return;
       stop();
-      setAnalysis({...data.analysis, public_id: data.id, published: true, publish_token: undefined});
+      setAnalysis({...data.analysis, ...(unlisted ? {share_id:data.id,shared:true} : {public_id:data.id,published:true}), publish_token: undefined});
       setVisible(data.analysis.arguments.length);
       setSelected(null);
       setTab('debate');
-      setProgress('Shared public debate');
+      setProgress(unlisted ? 'Shared debate' : 'Featured debate');
       setPage('studio');
     }).catch(error => {if (active && !controller.signal.aborted) setShareError(error instanceof Error ? error.message : 'Could not open this debate.');})
       .finally(() => {if (active) setShareLoading(false);});
@@ -896,7 +904,7 @@ function App() {
                   <h2>{analysis ? "Explore the debate" : "A little perspective changes everything."}</h2>
                 </div>
                 <span className="tiny-label">
-                  {analysis?.published ? "COMMUNITY DEBATE" : analysis?.mode === "sample"
+                  {analysis?.shared ? "SHARED DEBATE" : analysis?.published ? "COMMUNITY DEBATE" : analysis?.mode === "sample"
                     ? "ILLUSTRATIVE SAMPLE"
                     : analysis
                       ? "LIVE ANALYSIS"
@@ -997,7 +1005,7 @@ function App() {
                           : "live-badge"
                       }
                     >
-                      {analysis.published ? "Community debate" : analysis.mode === "sample"
+                      {analysis.shared ? "Shared debate" : analysis.published ? "Community debate" : analysis.mode === "sample"
                         ? "Sample replay"
                         : "Live run"}
                     </span>
@@ -1037,12 +1045,13 @@ function App() {
                       </button>
                     )}
                   </div>
-                  {analysis.published && <p className="sample-disclaimer">Community-shared debate. Original source passages are private; public source titles and links are shown where available.</p>}
-                  {!busy && analysis.mode === 'live' && analysis.report && (analysis.public_id || analysis.publish_token || analysis.history_id) && <PublishDebate
-                    key={analysis.history_id || analysis.publish_token || analysis.public_id}
-                    analysis={analysis} getToken={account.getToken}
-                    onPublished={id => {setFeaturedVersion(v => v + 1);setAnalysis(current => current === analysis ? {...current, public_id: id} : current);}}
-                  />}
+                  {(analysis.published || analysis.shared) && <p className="sample-disclaimer">Public debate snapshot. Original source passages are private; public source titles and links are shown where available.</p>}
+                  {!busy && analysis.mode === 'live' && analysis.report && !analysis.published && (analysis.share_id || analysis.publish_token || analysis.history_id) && <>
+                    <ShareDebate key={'share-'+(analysis.history_id || analysis.publish_token || analysis.share_id)} analysis={analysis} getToken={account.getToken}
+                      onShared={id=>setAnalysis(current=>current===analysis?{...current,share_id:id}:current)}/>
+                    {!analysis.shared && <PublishDebate key={'featured-'+(analysis.history_id || analysis.publish_token)} analysis={analysis} getToken={account.getToken}
+                      onPublished={()=>setFeaturedVersion(v=>v+1)}/>}
+                  </>}
                   {analysis.claims.length > 0 && (
                     <div className="evidence-overview" aria-label="Claim assessment overview">
                       <span className="overview-label"><ScanLine size={15}/> Evidence at a glance</span>

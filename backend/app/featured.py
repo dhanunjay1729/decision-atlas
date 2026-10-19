@@ -172,6 +172,14 @@ class FeaturedStore:
             if self._run(write):return token
         raise FeaturedError('The publication queue is full. Your debate is still available privately.')
 
+    def completed(self,token):
+        """Read a server-completed draft without publishing it to the gallery."""
+        key=_key(token);slot='draft_'+str(int(key[:8],16)%MAX_DRAFTS)
+        draft=self._run(lambda tx:tx.get(slot))
+        if draft.get('token')!=key or draft.get('expires',0)<=time.time():
+            raise FeaturedError('This debate capability is invalid or has expired.')
+        return draft['analysis']
+
     def publish(self,token,consent=False):
         if consent is not True:raise FeaturedError('Explicit consent is required to publish this debate.')
         key=_key(token);slot='draft_'+str(int(key[:8],16)%MAX_DRAFTS)
@@ -205,7 +213,7 @@ class FeaturedStore:
         UID. A stable salted ID makes repeated shares idempotent without adding
         an unbounded index or exposing the private history identifier.
         """
-        if consent is not True:raise FeaturedError('Explicit consent is required to share this debate.')
+        if consent is not True:raise FeaturedError('Explicit consent is required to publish this debate.')
         ident=_id(ident)
         public_id=self.ledger.ip_key('shared-history:'+ident)[:24]
         content=sanitize(analysis)
@@ -222,7 +230,7 @@ class FeaturedStore:
             existing=tx.get('entry_'+entry_id)
             if existing:
                 if existing.get('hidden'):
-                    raise FeaturedError('This public debate has been removed by the admin.',404)
+                    raise FeaturedError('This Featured publication has been removed by the admin.',404)
                 if not alias:tx.set('history_'+public_id,{'public_id':entry_id})
                 return existing
             entries=state.get('entries',{})
@@ -242,7 +250,7 @@ class FeaturedStore:
     def delete(self,ident):
         """Delete the public copy; retain only a bounded moderation tombstone.
 
-        Retaining the ID blocks stale publish capabilities and history re-shares
+        Retaining the ID blocks stale publish capabilities and history re-publications
         from restoring admin-deleted content. The author's history is separate.
         """
         ident=_id(ident)
